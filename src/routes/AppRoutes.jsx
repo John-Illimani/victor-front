@@ -20,6 +20,18 @@ import { EspecialidadesManagement } from "../pages/admin/EspecialidadesManagemen
 import { RevisionValidacionManagement } from "../pages/admin/RevisionValidacionManagement";
 import { BlockchainIntegrityManagement } from "../pages/admin/BlockchainIntegrityManagement";
 import { ConfiguracionManagement } from "../pages/admin/ConfiguracionManagement";
+import {
+  Actas2025Ano1,
+  Actas2025Ano2,
+  Actas2025Ano3,
+  Actas2025Ano4,
+  Actas2025Ano5,
+  Actas2026Ano1,
+  Actas2026Ano2,
+  Actas2026Ano3,
+  Actas2026Ano4,
+  Actas2026Ano5,
+} from "../pages/admin/actas/ActasPages";
 
 // DOCENTE ACOMPAÑANTE
 import { DocenteAcompananteDashboard } from "../pages/docentes/acompañante/DocenteAcompananteDashboard";
@@ -67,31 +79,79 @@ function AppRoutes() {
             <Route path="usuarios" element={<UserManagement />} />
             <Route path="academica">
               <Route path="estudiantes" element={<StudentsManagement />} />
-              <Route path="docentes-acompanantes" element={<DocentesAcompañantesManagement />} />
-              <Route path="docentes-guia" element={<DocentesGuiaManagement />} />
+              <Route
+                path="docentes-acompanantes"
+                element={<DocentesAcompañantesManagement />}
+              />
+              <Route
+                path="docentes-guia"
+                element={<DocentesGuiaManagement />}
+              />
               <Route path="gestiones" element={<GestionesManagement />} />
-              <Route path="anos-formacion" element={<AnosFormacionManagement />} />
-              <Route path="especialidades" element={<EspecialidadesManagement />} />
+              <Route
+                path="anos-formacion"
+                element={<AnosFormacionManagement />}
+              />
+              <Route
+                path="especialidades"
+                element={<EspecialidadesManagement />}
+              />
             </Route>
-            <Route path="blockchain" element={<BlockchainIntegrityManagement />} />
-            <Route path="validacion" element={<RevisionValidacionManagement />} />
+            <Route path="actas">
+  {/* Gestión 2025 */}
+  <Route path="2025">
+    <Route path="1" element={<Actas2025Ano1 />} />
+    <Route path="2" element={<Actas2025Ano2 />} />
+    <Route path="3" element={<Actas2025Ano3 />} />
+    <Route path="4" element={<Actas2025Ano4 />} />
+    <Route path="5" element={<Actas2025Ano5 />} />
+  </Route>
+
+  {/* Gestión 2026 */}
+  <Route path="2026">
+    <Route path="1" element={<Actas2026Ano1 />} />
+    <Route path="2" element={<Actas2026Ano2 />} />
+    <Route path="3" element={<Actas2026Ano3 />} />
+    <Route path="4" element={<Actas2026Ano4 />} />
+    <Route path="5" element={<Actas2026Ano5 />} />
+  </Route>
+</Route>
+            <Route
+              path="blockchain"
+              element={<BlockchainIntegrityManagement />}
+            />
+            <Route
+              path="validacion"
+              element={<RevisionValidacionManagement />}
+            />
             <Route path="configuracion" element={<ConfiguracionManagement />} />
           </Route>
         </Route>
 
         {/* --- MÓDULO DOCENTE ACOMPAÑANTE --- */}
-        <Route element={<ProtectedRoute allowedRoles={["DOCENTE_ACOMPANANTE"]} />}>
-          <Route path="/docente-acompanante" element={<SidebarDocenteAcompañanteESFMTHEA />}>
+        <Route
+          element={<ProtectedRoute allowedRoles={["DOCENTE_ACOMPANANTE"]} />}
+        >
+          <Route
+            path="/docente-acompanante"
+            element={<SidebarDocenteAcompañanteESFMTHEA />}
+          >
             <Route index element={<DocenteAcompananteDashboard />} />
             <Route path="dashboard" element={<DocenteAcompananteDashboard />} />
             <Route path="estudiantes" element={<MisEstudiantes />} />
             <Route path="iepc-pec">
               <Route path="actas" element={<MisActasAcompanante />} />
               <Route path="fichas" element={<FichasAcompanante />} />
-              <Route path="centralizadores" element={<CentralizadoresAcompanante />} />
+              <Route
+                path="centralizadores"
+                element={<CentralizadoresAcompanante />}
+              />
             </Route>
             <Route path="seguimiento" element={<SeguimientoAcompanante />} />
-            <Route path="verificar-integridad" element={<VerificarIntegridadAcompanante />} />
+            <Route
+              path="verificar-integridad"
+              element={<VerificarIntegridadAcompanante />}
+            />
             <Route path="reportes" element={<ReportesAcompanante />} />
             <Route path="cuenta" element={<MiCuentaAcompanante />} />
           </Route>
@@ -117,13 +177,25 @@ function AppRoutes() {
             <Route path="dashboard" element={<EstudianteDashboard />} />
             <Route path="mis-actas" element={<MisActasEstudiante />} />
             <Route path="mis-fichas" element={<MisFichasEstudiante />} />
-            <Route path="mis-calificaciones" element={<MisCalificacionesEstudiante />} />
+            <Route
+              path="mis-calificaciones"
+              element={<MisCalificacionesEstudiante />}
+            />
             <Route path="documentos">
               <Route path="actas" element={<DocumentosActasEstudiante />} />
-              <Route path="centralizador" element={<DocumentosCentralizadorEstudiante />} />
-              <Route path="certificado" element={<DocumentosCertificadoEstudiante />} />
+              <Route
+                path="centralizador"
+                element={<DocumentosCentralizadorEstudiante />}
+              />
+              <Route
+                path="certificado"
+                element={<DocumentosCertificadoEstudiante />}
+              />
             </Route>
-            <Route path="verificar-integridad" element={<VerificarIntegridadEstudiante />} />
+            <Route
+              path="verificar-integridad"
+              element={<VerificarIntegridadEstudiante />}
+            />
             <Route path="cuenta" element={<MiCuentaEstudiante />} />
           </Route>
         </Route>

@@ -15,7 +15,7 @@ export const userService = {
       const response = await api.post("/usuarios", userData);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: "Error al registrar el usuario." };
+      throw error.response?.data || { message: "Error al crear el usuario." };
     }
   },
 
@@ -25,6 +25,16 @@ export const userService = {
       return response.data;
     } catch (error) {
       throw error.response?.data || { message: "Error al actualizar el usuario." };
+    }
+  },
+
+  // FUNCIÓN QUE FALTABA: Cambiar estado (ACTIVO / INACTIVO)
+  toggleUserStatus: async (id, estado) => {
+    try {
+      const response = await api.patch(`/usuarios/${id}/status`, { estado });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al cambiar el estado del usuario." };
     }
   },
 
@@ -51,7 +61,7 @@ export const userService = {
       const response = await api.post("/usuarios/import-batch", { usuarios });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: "Error durante la importación masiva." };
+      throw error.response?.data || { message: "Error en la importación masiva de usuarios." };
     }
   }
 };

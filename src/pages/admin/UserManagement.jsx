@@ -18,7 +18,10 @@ import {
   Lock,
   EyeOff,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Power,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import { read, utils } from 'xlsx';
 
@@ -35,6 +38,7 @@ export const UserManagement = () => {
   // FILTROS
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   // MODALES DE ACCIONES Y FORMULARIOS
   const [showNewUserModal, setShowNewUserModal] = useState(false);
@@ -67,6 +71,7 @@ export const UserManagement = () => {
     ci: '',
     telefono: '',
     rol: 'ESTUDIANTE',
+    estado: 'ACTIVO',
     esfm_ua: 'ESFM/UA - El Alto',
     especialidad: 'Educación Primaria Comunitaria Vocacional',
     item_docente: ''
@@ -78,9 +83,9 @@ export const UserManagement = () => {
   const [targetRoleForPersonal, setTargetRoleForPersonal] = useState('DOCENTE_ACOMPANANTE');
   const [parsedExcelUsers, setParsedExcelUsers] = useState([]);
 
-  // OBTENER LISTA DE USUARIOS
-  const fetchUsers = async () => {
-    setLoading(true);
+  // OBTENER LISTA DE USUARIOS (SOPORTA ACTUALIZACIÓN SILENCIOSA)
+  const fetchUsers = async (showLoader = true) => {
+    if (showLoader) setLoading(true);
     try {
       const data = await userService.getUsers();
       setUsers(data);
@@ -88,12 +93,12 @@ export const UserManagement = () => {
     } catch (err) {
       showFeedback('Error de Conexión', err.message || 'Error al conectar con la base de datos.', 'error');
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers(true);
   }, []);
 
   const showFeedback = (title, message, type = 'success') => {
@@ -112,8 +117,9 @@ export const UserManagement = () => {
       (user.ci && user.ci.includes(search));
 
     const matchesRole = roleFilter === '' || user.rol === roleFilter;
+    const matchesStatus = statusFilter === '' || user.estado === statusFilter;
 
-    return matchesSearch && matchesRole;
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
   // SELECCIÓN MÚLTIPLE
@@ -129,6 +135,18 @@ export const UserManagement = () => {
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
+  };
+
+  // ACTIVAR / DESACTIVAR ESTADO RÁPIDO (SIN RECARGAR PAGINA/LOADER)
+  const handleToggleStatus = async (user) => {
+    const nextStatus = user.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
+    try {
+      await userService.toggleUserStatus(user.id, nextStatus);
+      showFeedback('Estado Modificado', `El usuario ${user.username} ahora está ${nextStatus}.`, 'success');
+      fetchUsers(false); // Actualización silenciosa en segundo plano
+    } catch (err) {
+      showFeedback('Error al Cambiar Estado', err.message || 'No se pudo actualizar el estado.', 'error');
+    }
   };
 
   // AUTO-GENERACIÓN DE USERNAME (nombre_carnet) Y PASSWORD (carnet*)
@@ -165,15 +183,13 @@ export const UserManagement = () => {
     });
   };
 
-  // CREAR / EDITAR USUARIO
+  // CREAR / EDITAR USUARIO (ACTUALIZACIÓN SILENCIOSA)
   const handleSubmitUser = async (e) => {
     e.preventDefault();
 
     try {
       const carnet = (formData.ci || '').trim();
       const domain = formData.rol === 'ESTUDIANTE' ? 'est.esfm.edu.bo' : 'esfm.edu.bo';
-      
-      // SE GENERA AUTOMÁTICAMENTE EL CORREO PARA EL BACKEND SIN MOSTRARLO EN EL FRONTEND
       const generatedEmail = `${carnet}@${domain}`;
 
       const payload = {
@@ -184,6 +200,7 @@ export const UserManagement = () => {
         ci: formData.ci,
         telefono: formData.telefono,
         rol: formData.rol,
+        estado: formData.estado,
         esfm_ua: formData.esfm_ua,
         especialidad: formData.especialidad,
         item_docente: formData.item_docente || null
@@ -203,7 +220,7 @@ export const UserManagement = () => {
 
       setShowNewUserModal(false);
       resetForm();
-      fetchUsers();
+      fetchUsers(false); // Actualización silenciosa
     } catch (err) {
       showFeedback('Error al Guardar', err.message || 'Ocurrió un fallo al procesar la solicitud.', 'error');
     }
@@ -223,7 +240,7 @@ export const UserManagement = () => {
     setShowDeleteConfirmModal(true);
   };
 
-  // EJECUCIÓN DE ELIMINACIÓN
+  // EJECUCIÓN DE ELIMINACIÓN (ACTUALIZACIÓN SILENCIOSA)
   const executeDelete = async () => {
     setShowDeleteConfirmModal(false);
     setActionLoading(true);
@@ -236,7 +253,7 @@ export const UserManagement = () => {
         const res = await userService.deleteMultipleUsers(selectedIds);
         showFeedback('Eliminación Masiva', res.message || 'Usuarios eliminados correctamente.', 'success');
       }
-      fetchUsers();
+      fetchUsers(false); // Actualización silenciosa
     } catch (err) {
       showFeedback('Error al Eliminar', err.message || 'No se pudo completar la eliminación.', 'error');
     } finally {
@@ -256,6 +273,7 @@ export const UserManagement = () => {
       ci: user.ci,
       telefono: user.telefono || '',
       rol: user.rol,
+      estado: user.estado || 'ACTIVO',
       esfm_ua: user.esfm_ua || 'ESFM/UA - El Alto',
       especialidad: user.especialidad || 'Educación Primaria Comunitaria Vocacional',
       item_docente: user.item_docente || ''
@@ -275,6 +293,7 @@ export const UserManagement = () => {
       ci: '',
       telefono: '',
       rol: 'ESTUDIANTE',
+      estado: 'ACTIVO',
       esfm_ua: 'ESFM/UA - El Alto',
       especialidad: 'Educación Primaria Comunitaria Vocacional',
       item_docente: ''
@@ -348,9 +367,10 @@ export const UserManagement = () => {
             nombre,
             apellido,
             username: `${primerNombre}_${ci}`,
-            correo: `${ci}@esfm.edu.bo`, // Generado silenciosamente
+            correo: `${ci}@esfm.edu.bo`,
             password: `${ci}*`,
             rol: targetRoleForPersonal,
+            estado: 'ACTIVO',
             codigo
           });
         });
@@ -391,9 +411,10 @@ export const UserManagement = () => {
             nombre,
             apellido,
             username: `${primerNombre}_${ci}`,
-            correo: `${ci}@est.esfm.edu.bo`, // Generado silenciosamente
+            correo: `${ci}@est.esfm.edu.bo`,
             password: `${ci}*`,
             rol: 'ESTUDIANTE',
+            estado: 'ACTIVO',
             especialidad,
             genero,
             modalidad_ingreso: modalidad,
@@ -419,6 +440,7 @@ export const UserManagement = () => {
     }
   };
 
+  // IMPORTAR EXCEL CON ACTUALIZACIÓN SILENCIOSA
   const handleImportExcelToDB = async () => {
     if (parsedExcelUsers.length === 0) return;
 
@@ -429,7 +451,7 @@ export const UserManagement = () => {
       setShowExcelModal(false);
       setExcelFile(null);
       setParsedExcelUsers([]);
-      fetchUsers();
+      fetchUsers(false); // Actualización silenciosa
     } catch (err) {
       showFeedback('Error de Importación', err.message || 'Falló el proceso masivo.', 'error');
     } finally {
@@ -452,7 +474,7 @@ export const UserManagement = () => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Administración centralizada de usuarios, estudiantes, docentes acompañantes y docentes guía.
+              Administración centralizada de usuarios, estudiantes, docentes acompañantes y docentes guía con control de activación y bajas temporales.
             </p>
           </div>
 
@@ -493,8 +515,8 @@ export const UserManagement = () => {
       )}
 
       {/* BÚSQUEDA Y FILTROS */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="relative">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="relative col-span-1 sm:col-span-1">
           <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
           <input
             type="text"
@@ -519,9 +541,22 @@ export const UserManagement = () => {
             <option value="ADMINISTRADOR">ADMINISTRADOR</option>
           </select>
         </div>
+
+        <div className="relative">
+          <Power className="absolute left-3.5 top-3 text-slate-400" size={16} />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 text-xs font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none appearance-none bg-white cursor-pointer"
+          >
+            <option value="">Todos los Estados</option>
+            <option value="ACTIVO">ACTIVO</option>
+            <option value="INACTIVO">INACTIVO</option>
+          </select>
+        </div>
       </div>
 
-      {/* TABLA DE USUARIOS */}
+      {/* TABLA DE USUARIOS CON COLUMNA ESTADO */}
       <div className="rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -539,13 +574,14 @@ export const UserManagement = () => {
                 <th className="py-3.5 px-4">Nombre Completo</th>
                 <th className="py-3.5 px-4">C.I.</th>
                 <th className="py-3.5 px-4">Rol</th>
+                <th className="py-3.5 px-4 text-center">Estado</th>
                 <th className="py-3.5 px-4 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="py-8 text-center text-slate-500 font-bold">
+                  <td colSpan="7" className="py-8 text-center text-slate-500 font-bold">
                     <Loader2 className="animate-spin inline-block mr-2 text-[#8C731A]" size={20} />
                     Cargando usuarios desde PostgreSQL...
                   </td>
@@ -553,6 +589,7 @@ export const UserManagement = () => {
               ) : filteredUsers.length > 0 ? (
                 filteredUsers.map((user) => {
                   const isSelected = selectedIds.includes(user.id);
+                  const isActive = user.estado === 'ACTIVO';
                   return (
                     <tr key={user.id} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-rose-50/40' : ''}`}>
                       <td className="py-3.5 px-4">
@@ -576,6 +613,23 @@ export const UserManagement = () => {
                           {user.rol}
                         </span>
                       </td>
+
+                      {/* COLUMNA DE ESTADO CON SWITCH INTERACTIVO */}
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={() => handleToggleStatus(user)}
+                          title={`Click para cambiar a ${isActive ? 'INACTIVO' : 'ACTIVO'}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase transition-all cursor-pointer ${
+                            isActive 
+                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' 
+                              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                          }`}
+                        >
+                          {isActive ? <ToggleRight size={16} className="text-emerald-600" /> : <ToggleLeft size={16} className="text-slate-400" />}
+                          {user.estado || 'ACTIVO'}
+                        </button>
+                      </td>
+
                       <td className="py-3.5 px-4">
                         <div className="flex items-center justify-center gap-2">
                           <button
@@ -606,7 +660,7 @@ export const UserManagement = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan="6" className="py-8 text-center text-slate-400 font-medium">
+                  <td colSpan="7" className="py-8 text-center text-slate-400 font-medium">
                     No se encontraron usuarios coincidentes.
                   </td>
                 </tr>
@@ -690,6 +744,29 @@ export const UserManagement = () => {
                   </select>
                 </div>
 
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">Estado del Usuario *</label>
+                  <select
+                    value={formData.estado}
+                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-bold text-slate-700 focus:border-[#8C731A] focus:outline-none bg-white cursor-pointer"
+                  >
+                    <option value="ACTIVO">ACTIVO</option>
+                    <option value="INACTIVO">INACTIVO</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">Teléfono</label>
+                  <input
+                    type="text"
+                    value={formData.telefono}
+                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
+                    placeholder="Ej. 71234567"
+                  />
+                </div>
+
                 {/* BLOQUE CREDENCIALES */}
                 <div className="sm:col-span-2 rounded-2xl bg-slate-50 p-4 border border-slate-200 space-y-3">
                   <div className="flex items-center justify-between">
@@ -744,17 +821,6 @@ export const UserManagement = () => {
                 </div>
 
                 <div>
-                  <label className="block font-extrabold text-slate-700 mb-1">Teléfono</label>
-                  <input
-                    type="text"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
-                    placeholder="Ej. 71234567"
-                  />
-                </div>
-
-                <div>
                   <label className="block font-extrabold text-slate-700 mb-1">Item / Código Docente</label>
                   <input
                     type="text"
@@ -765,7 +831,7 @@ export const UserManagement = () => {
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                <div>
                   <label className="block font-extrabold text-slate-700 mb-1">Especialidad *</label>
                   <input
                     type="text"
@@ -944,9 +1010,16 @@ export const UserManagement = () => {
                   <span className="text-slate-800 font-bold">{selectedUser.rol}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-bold">Teléfono:</span>
-                  <span className="text-slate-800 font-bold">{selectedUser.telefono || 'Sin registrar'}</span>
+                  <span className="text-slate-400 block font-bold">Estado:</span>
+                  <span className={`font-black ${selectedUser.estado === 'ACTIVO' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                    {selectedUser.estado || 'ACTIVO'}
+                  </span>
                 </div>
+              </div>
+
+              <div>
+                <span className="text-slate-400 block font-bold">Teléfono:</span>
+                <span className="text-slate-800 font-bold">{selectedUser.telefono || 'Sin registrar'}</span>
               </div>
 
               <div>
