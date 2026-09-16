@@ -794,10 +794,10 @@ export const StudentsManagement = () => {
                         2026
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-emerald-800">
-                        {student.da_nombre
-                          ? `${student.da_nombre} ${student.da_apellido}`
-                          : "Sin Asignar"}
-                      </td>
+  {student.da_nombre
+    ? `${student.da_nombre} ${student.da_apellido}`
+    : "Sin Asignar"}
+</td>
 
                       <td className="py-3.5 px-4 text-center">
                         <button

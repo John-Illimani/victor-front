@@ -1,50 +1,66 @@
 import { api } from "./api";
 
 export const studentService = {
-  // Obtener estudiantes
   getStudents: async () => {
-    const res = await api.get("/estudiantes");
-    return res.data;
-  },
-
-  // Crear/Editar Estudiante
-  createStudent: async (data) => (await api.post("/estudiantes", data)).data,
-  updateStudent: async (id, data) =>
-    (await api.put(`/estudiantes/${id}`, data)).data,
-  toggleStatus: async (id, estado) =>
-    (await api.patch(`/estudiantes/${id}/status`, { estado })).data,
-  deleteStudent: async (id) => (await api.delete(`/estudiantes/${id}`)).data,
-  deleteBatch: async (ids) =>
-    (await api.post("/estudiantes/delete-batch", { ids })).data,
-  importBatchStudents: async (estudiantes) =>
-    (await api.post("/estudiantes/import-batch", { estudiantes })).data,
-
-  // Operaciones de Fichas
-  // studentService.js
-  getFicha: async (estudiante_id, codigo_ficha) => {
     try {
-      const res = await api.get(`/fichas/${estudiante_id}/${codigo_ficha}`);
+      const res = await api.get("/estudiantes");
       return res.data;
     } catch (error) {
-      // Si el backend responde 404, retornamos objeto vacío limpiamente
-      if (error.response && error.response.status === 404) {
-        return { existe: false, datos: {} };
-      }
-      throw error;
+      throw error.response?.data || { message: "Error al consultar la lista de estudiantes." };
     }
   },
 
-  saveFicha: async (estudiante_id, codigo_ficha, datos) => {
-    const res = await api.post("/fichas/guardar", {
-      estudiante_id,
-      codigo_ficha,
-      datos,
-    });
-    return res.data;
+  createStudent: async (data) => {
+    try {
+      const res = await api.post("/estudiantes", data);
+      return res.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al registrar el estudiante." };
+    }
   },
 
-  deleteFicha: async (estudiante_id, codigo_ficha) => {
-    const res = await api.delete(`/fichas/${estudiante_id}/${codigo_ficha}`);
-    return res.data;
+  updateStudent: async (id, data) => {
+    try {
+      const res = await api.put(`/estudiantes/${id}`, data);
+      return res.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al actualizar el estudiante." };
+    }
   },
+
+  toggleStatus: async (id, estado) => {
+    try {
+      const res = await api.patch(`/estudiantes/${id}/status`, { estado });
+      return res.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al cambiar el estado del estudiante." };
+    }
+  },
+
+  deleteStudent: async (id) => {
+    try {
+      const res = await api.delete(`/estudiantes/${id}`);
+      return res.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al eliminar el estudiante." };
+    }
+  },
+
+  deleteBatch: async (ids) => {
+    try {
+      const res = await api.post("/estudiantes/delete-batch", { ids });
+      return res.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al eliminar la lista de estudiantes." };
+    }
+  },
+
+  importBatchStudents: async (estudiantes) => {
+    try {
+      const res = await api.post("/estudiantes/import-batch", { estudiantes });
+      return res.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error durante la importación masiva." };
+    }
+  }
 };
