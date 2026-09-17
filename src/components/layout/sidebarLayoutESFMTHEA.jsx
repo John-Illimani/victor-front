@@ -245,15 +245,7 @@ export const SidebarLayoutESFMTHEA = ({
             </button>
           </div>
 
-          {!isCollapsed && (
-            <div className="mx-4 mt-4 flex items-center justify-between rounded-xl bg-[#6B9E1E]/10 p-3 border border-[#6B9E1E]/30 text-[#6B9E1E] transition-all duration-300 shrink-0">
-              <div className="flex items-center gap-2">
-                <Blocks size={16} />
-                <span className="text-[11px] font-bold">Red Blockchain Activa</span>
-              </div>
-              <span className="h-2 w-2 rounded-full bg-[#6B9E1E] animate-pulse" />
-            </div>
-          )}
+         
 
           <nav className="mt-4 flex-1 space-y-1.5 pl-3 pr-1 overflow-y-auto no-scrollbar">
             {menuItems.map((item, idx) => (

@@ -1,50 +1,136 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
-  FileText, 
-  CheckCircle2, 
-  Blocks, 
+  ShieldCheck, 
+  Calendar, 
+  Activity, 
+  UserCheck, 
+  GraduationCap, 
+  Sparkles, 
+  BarChart3, 
   Clock, 
-  AlertTriangle,
-  TrendingUp,
-  BarChart3,
-  ShieldCheck,
-  Calendar,
-  Activity,
-  UserCheck,
-  GraduationCap,
-  Sparkles,
-  PieChart,
-  History,
-  Search,
-  ArrowRight
+  Loader2,
+  Award,
+  BookOpen
 } from 'lucide-react';
 
+// SERVICIOS DE API REALES
+import { userService } from '../../services/userService';
+import { studentService } from '../../services/studentService';
+import { teacherService } from '../../services/teacherService';
+import { guideService } from '../../services/guideService';
+import { gestionService } from '../../services/gestionService';
+import { especialidadService } from '../../services/especialidadService';
+
 export const AdminDashboard = () => {
-  // Estado para el usuario logueado
+  // ESTADOS DE USUARIO LOGUEADO Y RELOJ EN TIEMPO REAL
   const [currentUser, setCurrentUser] = useState(null);
-  
-  // Estado para fecha y hora en tiempo real
   const [time, setTime] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+
+  // ESTADOS CON DATOS REALES DE BASE DE DATOS
+  const [metrics, setMetrics] = useState({
+    estudiantes: 0,
+    docentesAcompanantes: 0,
+    docentesGuia: 0,
+    totalUsuarios: 0,
+    gestionesCount: 0,
+    especialidadesCount: 0
+  });
+
+  const [gestionesList, setGestionesList] = useState([]);
+  const [especialidadesList, setEspecialidadesList] = useState([]);
 
   useEffect(() => {
-    // Reloj en vivo
+    // Reloj en tiempo real
     const timer = setInterval(() => setTime(new Date()), 1000);
 
-    // Carga de usuario desde localStorage
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      try {
-        setCurrentUser(JSON.parse(savedUser));
-      } catch (e) {
-        console.error("Error cargando usuario", e);
+    // Cargar información del usuario logueado desde localStorage
+    const loadUserData = () => {
+      const savedUser = localStorage.getItem("user");
+      if (savedUser) {
+        try {
+          setCurrentUser(JSON.parse(savedUser));
+        } catch (e) {
+          console.error("Error al parsear el usuario del localStorage", e);
+        }
       }
-    }
+    };
 
-    return () => clearInterval(timer);
+    loadUserData();
+    window.addEventListener("storage", loadUserData);
+
+    // CONSULTAS A LAS APIS PARA OBTENER DATOS REALES
+    const fetchRealData = async () => {
+      setLoading(true);
+      try {
+        const [estudRes, teachRes, guideRes, userRes, gestRes, espRes] = await Promise.allSettled([
+          studentService.getStudents(),
+          teacherService.getTeachers(),
+          guideService.getGuides(),
+          userService.getUsers(),
+          gestionService.getGestiones(),
+          especialidadService.getEspecialidades()
+        ]);
+
+        // 1. Estudiantes
+        const totalEstud = estudRes.status === 'fulfilled' 
+          ? (Array.isArray(estudRes.value) ? estudRes.value.length : estudRes.value?.estudiantes?.length || 0) 
+          : 0;
+
+        // 2. Docentes Acompañantes
+        const totalTeach = teachRes.status === 'fulfilled' 
+          ? (Array.isArray(teachRes.value) ? teachRes.value.length : teachRes.value?.docentes?.length || 0) 
+          : 0;
+
+        // 3. Docentes Guía
+        const totalGuides = guideRes.status === 'fulfilled' 
+          ? (Array.isArray(guideRes.value) ? guideRes.value.length : guideRes.value?.docentes?.length || 0) 
+          : 0;
+
+        // 4. Usuarios Totales
+        const totalUsers = userRes.status === 'fulfilled' 
+          ? (Array.isArray(userRes.value) ? userRes.value.length : 0) 
+          : 0;
+
+        // 5. Gestiones Académicas
+        const listGest = gestRes.status === 'fulfilled' 
+          ? (Array.isArray(gestRes.value) ? gestRes.value : gestRes.value?.gestiones || []) 
+          : [];
+
+        // 6. Especialidades
+        const listEsp = espRes.status === 'fulfilled' 
+          ? (Array.isArray(espRes.value) ? espRes.value : espRes.value?.especialidades || []) 
+          : [];
+
+        setGestionesList(listGest);
+        setEspecialidadesList(listEsp);
+
+        setMetrics({
+          estudiantes: totalEstud,
+          docentesAcompanantes: totalTeach,
+          docentesGuia: totalGuides,
+          totalUsuarios: totalUsers,
+          gestionesCount: listGest.length,
+          especialidadesCount: listEsp.length
+        });
+
+      } catch (err) {
+        console.error("Error al cargar métricas reales:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRealData();
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("storage", loadUserData);
+    };
   }, []);
 
-  // Formateadores de fecha y hora
+  // Formateadores
   const formatTime = (date) => {
     return date.toLocaleTimeString('es-BO', { 
       hour: '2-digit', 
@@ -60,12 +146,18 @@ export const AdminDashboard = () => {
     return str.charAt(0).toUpperCase() + str.slice(1);
   };
 
-  // 1. Tarjetas Superiores: Usuarios y Actas (8 KPIs solicitados)
+  const getNombreLogueado = () => {
+    if (!currentUser) return 'Administrador';
+    const nombreCompleto = `${currentUser.nombre || ''} ${currentUser.apellido || ''}`.trim();
+    return nombreCompleto || currentUser.username || 'Administrador';
+  };
+
+  // TARJETAS DE MÉTRICAS REALES DE LA BASE DE DATOS
   const kpiStats = [
     { 
-      title: 'Total Estudiantes', 
-      value: '1,240', 
-      badge: 'Matriculados',
+      title: 'Estudiantes Matriculados', 
+      value: loading ? null : metrics.estudiantes, 
+      badge: 'Nivel Superior',
       icon: GraduationCap, 
       color: 'from-blue-600 to-indigo-700',
       textColor: 'text-blue-600',
@@ -73,7 +165,7 @@ export const AdminDashboard = () => {
     },
     { 
       title: 'Docentes Acompañantes', 
-      value: '86', 
+      value: loading ? null : metrics.docentesAcompanantes, 
       badge: 'ESFM / UA',
       icon: UserCheck, 
       color: 'from-emerald-600 to-teal-700', 
@@ -82,7 +174,7 @@ export const AdminDashboard = () => {
     },
     { 
       title: 'Docentes Guía', 
-      value: '142', 
+      value: loading ? null : metrics.docentesGuia, 
       badge: 'UE / CEA / CEE',
       icon: Users, 
       color: 'from-violet-600 to-purple-700', 
@@ -90,105 +182,62 @@ export const AdminDashboard = () => {
       bgLight: 'bg-violet-50'
     },
     { 
-      title: 'Total Usuarios', 
-      value: '1,478', 
-      badge: 'Sistema',
+      title: 'Usuarios Registrados', 
+      value: loading ? null : metrics.totalUsuarios, 
+      badge: 'Plataforma',
       icon: ShieldCheck, 
       color: 'from-slate-700 to-slate-900', 
       textColor: 'text-slate-700',
       bgLight: 'bg-slate-100'
     },
     { 
-      title: 'Actas Registradas', 
-      value: '348', 
-      badge: 'Total General',
-      icon: FileText, 
+      title: 'Gestiones Configuradas', 
+      value: loading ? null : metrics.gestionesCount, 
+      badge: 'Académicas',
+      icon: Calendar, 
       color: 'from-[#8C731A] to-[#B39324]',
       textColor: 'text-[#8C731A]',
       bgLight: 'bg-[#8C731A]/10'
     },
     { 
-      title: 'Actas Validadas', 
-      value: '215', 
-      badge: 'Concluidas',
-      icon: CheckCircle2, 
-      color: 'from-[#6B9E1E] to-[#8BC34A]', 
-      textColor: 'text-[#6B9E1E]',
-      bgLight: 'bg-[#6B9E1E]/10'
-    },
-    { 
-      title: 'Actas en Revisión', 
-      value: '88', 
-      badge: 'En Proceso',
-      icon: Clock, 
-      color: 'from-amber-500 to-amber-600', 
-      textColor: 'text-amber-600',
-      bgLight: 'bg-amber-500/10'
-    },
-    { 
-      title: 'Actas Pendientes / Obs.', 
-      value: '45', 
-      badge: 'Revisión Req.',
-      icon: AlertTriangle, 
+      title: 'Especialidades', 
+      value: loading ? null : metrics.especialidadesCount, 
+      badge: 'Habilitadas',
+      icon: Award, 
       color: 'from-[#801B28] to-[#A32334]', 
       textColor: 'text-[#801B28]',
       bgLight: 'bg-[#801B28]/10'
-    },
-  ];
-
-  // Datos de Actas por Gestión
-  const gestionesData = [
-    { gestion: 'Gestión 2025', cantidad: 310, porcentaje: 70, color: 'bg-slate-600' },
-    { gestion: 'Gestión 2026', cantidad: 348, porcentaje: 90, color: 'bg-[#801B28]' },
-  ];
-
-  // Datos de Actas por Estado
-  const estadosActasData = [
-    { estado: 'Validadas', cantidad: 215, porcentaje: 61, color: 'bg-[#6B9E1E]' },
-    { estado: 'En revisión', cantidad: 88, porcentaje: 25, color: 'bg-amber-500' },
-    { estado: 'Pendientes', cantidad: 28, porcentaje: 8, color: 'bg-blue-500' },
-    { estado: 'Observadas', cantidad: 17, porcentaje: 6, color: 'bg-[#801B28]' },
-  ];
-
-  // Datos de Actividad Reciente (Trazabilidad)
-  const recentActivity = [
-    { id: 1, usuario: 'Docente Acompañante', accion: 'Actualizó F-2', fecha: '05/09/2026 10:42', modulo: 'Actas', badgeColor: 'bg-amber-100 text-amber-800' },
-    { id: 2, usuario: 'Administrador', accion: 'Registró usuario U003', fecha: '05/09/2026 09:15', modulo: 'Usuarios', badgeColor: 'bg-blue-100 text-blue-800' },
-    { id: 3, usuario: 'Docente Guía', accion: 'Firmó digitalmente F-1', fecha: '04/09/2026 18:30', modulo: 'Actas', badgeColor: 'bg-emerald-100 text-emerald-800' },
-    { id: 4, usuario: 'Administrador', accion: 'Validó Hash Blockchain ACT-2026-02', fecha: '04/09/2026 15:10', modulo: 'Blockchain', badgeColor: 'bg-purple-100 text-purple-800' },
+    }
   ];
 
   return (
     <div className="space-y-6 font-sans">
       
-      {/* BANNER PRINCIPAL CON SALUDO, RELOJ Y FECHA */}
+      {/* BANNER ENCABEZADO CON NOMBRE REAL Y HORA EN VIVO */}
       <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-[#121824] via-[#1A1A1A] to-[#801B28] p-6 sm:p-8 text-white shadow-2xl border border-white/10">
         
-        {/* Efectos de Iluminación de Fondo */}
         <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full bg-[#8C731A]/20 blur-3xl pointer-events-none" />
         <div className="absolute -left-10 -bottom-10 h-64 w-64 rounded-full bg-[#801B28]/30 blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           
-          {/* Lado Izquierdo: Usuario y Bienvenida */}
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-[#F3EFCF] backdrop-blur-md border border-white/15">
-              <ShieldCheck size={14} className="text-[#6B9E1E]" /> Portal Administrador IEPC-PEC
+              <ShieldCheck size={14} className="text-[#6B9E1E]" /> Módulo Administrador IEPC-PEC
             </div>
 
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white flex items-center gap-3">
-              Bienvenido, {currentUser ? `${currentUser.nombre || ''} ${currentUser.apellido || ''}`.trim() || currentUser.username : 'Administrador'}
+              Bienvenido, {getNombreLogueado()}
               <Sparkles size={28} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Resumen general del sistema de investigación y práctica educativa. Monitoreo integral de datos académicos, usuarios y trazabilidad en Blockchain.
+              Consola de administración general del sistema IEPC-PEC. Control de catálogos institucionales, asignación de docentes y gestión de usuarios.
             </p>
           </div>
 
-          {/* Lado Derecho: FECHA Y HORA */}
           <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-            {/* Tarjeta de Hora */}
+            {/* HORA OFICIAL */}
             <div className="flex w-full sm:w-auto items-center gap-3 rounded-2xl bg-white/10 p-4 backdrop-blur-md border border-white/15 shadow-inner">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#8C731A] text-white shadow-lg">
                 <Clock size={24} />
@@ -203,7 +252,7 @@ export const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Tarjeta de Fecha */}
+            {/* FECHA */}
             <div className="flex w-full sm:w-auto items-center gap-3 rounded-2xl bg-white/10 p-4 backdrop-blur-md border border-white/15 shadow-inner">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#801B28] text-white shadow-lg">
                 <Calendar size={22} />
@@ -213,7 +262,7 @@ export const AdminDashboard = () => {
                   {formatDate(time)}
                 </span>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300">
-                  Gestión Académica 2026
+                  Gestión Institucional
                 </span>
               </div>
             </div>
@@ -221,29 +270,26 @@ export const AdminDashboard = () => {
 
         </div>
 
-        {/* Barra inferior de estado rápido */}
         <div className="mt-6 flex flex-wrap items-center justify-between border-t border-white/10 pt-4 text-xs text-slate-300 gap-2">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#6B9E1E] opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#6B9E1E]"></span>
             </span>
-            <span className="font-semibold">Base PostgreSQL Sincronizada</span>
+            <span className="font-semibold">Servidor PostgreSQL Conectado</span>
           </div>
 
           <div className="flex items-center gap-4 text-[11px]">
             <span className="flex items-center gap-1 font-mono text-[#F3EFCF]">
-              <Activity size={14} className="text-[#6B9E1E]" /> Latencia Red: 14ms
+              <Activity size={14} className="text-[#6B9E1E]" /> API REST Sincronizada
             </span>
-            <span className="hidden sm:inline-block text-slate-500">|</span>
-            <span className="font-mono text-slate-400">Seguridad: JWT + Hash Blockchain</span>
           </div>
         </div>
 
       </div>
 
-      {/* TARJETAS DE MÉTRICAS (8 TARJETAS SOLICITADAS) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* TARJETAS DE MÉTRICAS GENERALES REALES */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpiStats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -263,8 +309,12 @@ export const AdminDashboard = () => {
               </div>
 
               <div className="space-y-1">
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight font-mono">
-                  {stat.value}
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight font-mono flex items-center gap-2">
+                  {stat.value === null ? (
+                    <Loader2 className="animate-spin text-slate-400" size={20} />
+                  ) : (
+                    stat.value.toLocaleString()
+                  )}
                 </h3>
                 <p className="text-xs font-bold text-slate-700">
                   {stat.title}
@@ -275,153 +325,106 @@ export const AdminDashboard = () => {
         })}
       </div>
 
-      {/* SECCIÓN DE GRÁFICOS PARTE CENTRAL */}
+      {/* SECCIÓN DATOS REALES: GESTIONES Y ESPECIALIDADES */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         
-        {/* GRÁFICO 1: ACTAS POR GESTIÓN */}
+        {/* BLOQUE 1: GESTIONES ACADÉMICAS REGISTRADAS */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-            <div>
-              <h3 className="text-base font-black text-[#1A1A1A] flex items-center gap-2">
-                <BarChart3 size={18} className="text-[#8C731A]" /> 
-                Actas por Gestión
-              </h3>
-              <p className="text-xs text-slate-400">Comparativa histórica de documentos generados</p>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            {gestionesData.map((item, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex justify-between text-xs font-bold">
-                  <span className="text-slate-800 font-extrabold">{item.gestion}</span>
-                  <span className="font-mono text-slate-900 font-black">{item.cantidad} actas</span>
-                </div>
-                
-                <div className="h-4 w-full rounded-full bg-slate-100 p-0.5 overflow-hidden shadow-inner">
-                  <div 
-                    className={`h-full rounded-full ${item.color} transition-all duration-700 ease-out shadow-sm`}
-                    style={{ width: `${item.porcentaje}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* GRÁFICO 2: ACTAS POR ESTADO */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-            <div>
-              <h3 className="text-base font-black text-[#1A1A1A] flex items-center gap-2">
-                <PieChart size={18} className="text-[#801B28]" /> 
-                Actas por Estado
-              </h3>
-              <p className="text-xs text-slate-400">Distribución de actas en el flujo de aprobación</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {estadosActasData.map((item, index) => (
-              <div key={index} className="space-y-1.5">
-                <div className="flex justify-between text-xs font-bold">
-                  <span className="text-slate-700 flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
-                    {item.estado}
-                  </span>
-                  <span className="font-mono text-slate-900">{item.cantidad} ({item.porcentaje}%)</span>
-                </div>
-                
-                <div className="h-3 w-full rounded-full bg-slate-100 p-0.5 overflow-hidden shadow-inner">
-                  <div 
-                    className={`h-full rounded-full ${item.color} transition-all duration-500`}
-                    style={{ width: `${item.porcentaje}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* SECCIÓN PARTE INFERIOR: ACTIVIDAD RECIENTE & BLOCKCHAIN */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        
-        {/* TABLA DE ACTIVIDAD RECIENTE (2 COLS) */}
-        <div className="lg:col-span-2 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
             <div>
               <h3 className="text-base font-black text-[#1A1A1A] flex items-center gap-2">
-                <History size={18} className="text-[#8C731A]" /> 
-                Actividad Reciente
+                <BarChart3 size={18} className="text-[#8C731A]" /> 
+                Gestiones Académicas
               </h3>
-              <p className="text-xs text-slate-400">Registro de acciones para trazabilidad</p>
+              <p className="text-xs text-slate-400">Registros obtenidos de `gestionService`</p>
             </div>
+            <span className="text-xs font-mono font-bold text-[#801B28] bg-rose-50 px-3 py-1 rounded-full border border-rose-100">
+              {gestionesList.length} Gestiones
+            </span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                  <th className="py-2.5 px-3">Usuario</th>
-                  <th className="py-2.5 px-3">Acción</th>
-                  <th className="py-2.5 px-3">Fecha</th>
-                  <th className="py-2.5 px-3">Módulo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {recentActivity.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-3 font-bold text-slate-900">{row.usuario}</td>
-                    <td className="py-3 px-3">{row.accion}</td>
-                    <td className="py-3 px-3 font-mono text-slate-500">{row.fecha}</td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${row.badgeColor}`}>
-                        {row.modulo}
+          {loading ? (
+            <div className="p-8 text-center text-xs font-bold text-slate-400 flex items-center justify-center gap-2">
+              <Loader2 className="animate-spin text-[#801B28]" size={18} /> Cargando gestiones...
+            </div>
+          ) : gestionesList.length > 0 ? (
+            <div className="divide-y divide-slate-100 text-xs">
+              {gestionesList.map((g, idx) => (
+                <div key={g.id || idx} className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-xl transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-xl bg-amber-50 text-[#8C731A] font-bold flex items-center justify-center font-mono">
+                      #{idx + 1}
+                    </div>
+                    <div>
+                      <span className="block font-extrabold text-slate-800">
+                        Gestión {g.anio || g.gestion || 'S/G'}
                       </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <span className="text-[10px] text-slate-400">
+                        {g.descripcion || 'Sin descripción'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                    (g.estado === 'ACTIVA' || g.estado === 'Activa' || g.activo) 
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                      : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {g.estado || (g.activo ? 'ACTIVA' : 'INACTIVA')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-xs text-slate-400">
+              No hay gestiones registradas en la base de datos.
+            </div>
+          )}
         </div>
 
-        {/* NODO BLOCKCHAIN E INTEGRIDAD (1 COL) */}
-        <div className="rounded-3xl border border-slate-200 bg-slate-900 p-6 text-white shadow-xl flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#6B9E1E]/20 text-[#6B9E1E] border border-[#6B9E1E]/40">
-                  <Blocks size={20} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-white">Integridad Blockchain</h3>
-                  <p className="text-[11px] text-slate-400">Auditoría Hash Inmutable</p>
-                </div>
-              </div>
-              <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#6B9E1E] animate-ping" />
+        {/* BLOQUE 2: ESPECIALIDADES HABILITADAS */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+            <div>
+              <h3 className="text-base font-black text-[#1A1A1A] flex items-center gap-2">
+                <BookOpen size={18} className="text-[#801B28]" /> 
+                Especialidades
+              </h3>
+              <p className="text-xs text-slate-400">Registros obtenidos de `especialidadService`</p>
             </div>
-
-            <div className="space-y-4 my-4">
-              <div className="rounded-2xl bg-white/5 p-4 border border-white/5 space-y-1">
-                <span className="block text-[10px] uppercase font-bold text-slate-400">Hashes SHA-256 Registrados</span>
-                <span className="block text-2xl font-black text-white font-mono">215 / 215</span>
-                <span className="text-[10px] text-[#6B9E1E] font-bold">100% Sincronizado con PostgreSQL</span>
-              </div>
-
-              <div className="rounded-2xl bg-white/5 p-4 border border-white/5 space-y-1">
-                <span className="block text-[10px] uppercase font-bold text-slate-400">Tiempo de Confirmación</span>
-                <span className="block text-xl font-black text-[#8C731A] font-mono">0.82s</span>
-              </div>
-            </div>
+            <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+              {especialidadesList.length} Especialidades
+            </span>
           </div>
 
-          <div className="rounded-2xl bg-gradient-to-r from-[#8C731A]/30 to-[#801B28]/30 p-3.5 border border-white/10 text-center">
-            <p className="text-xs font-bold text-[#F3EFCF]">Seguridad Garantizada</p>
-            <p className="text-[10px] text-slate-300 mt-0.5">PostgreSQL respalda datos; Blockchain inmutabilidad.</p>
-          </div>
+          {loading ? (
+            <div className="p-8 text-center text-xs font-bold text-slate-400 flex items-center justify-center gap-2">
+              <Loader2 className="animate-spin text-[#801B28]" size={18} /> Cargando especialidades...
+            </div>
+          ) : especialidadesList.length > 0 ? (
+            <div className="divide-y divide-slate-100 text-xs max-h-[280px] overflow-y-auto pr-1">
+              {especialidadesList.map((esp, idx) => (
+                <div key={esp.id || idx} className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-xl transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-xl bg-rose-50 text-[#801B28] font-bold flex items-center justify-center font-mono">
+                      {esp.codigo || `E${idx + 1}`}
+                    </div>
+                    <span className="font-extrabold text-slate-800">
+                      {esp.nombre || esp.especialidad}
+                    </span>
+                  </div>
+
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                    {esp.area || 'Formación General'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-xs text-slate-400">
+              No hay especialidades registradas en la base de datos.
+            </div>
+          )}
         </div>
 
       </div>

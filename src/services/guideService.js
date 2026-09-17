@@ -53,5 +53,51 @@ export const guideService = {
     } catch (error) {
       throw error.response?.data || { message: "Error durante la importación de docentes guía." };
     }
+  },
+
+  getAssignedStudents: async (docenteId) => {
+    try {
+      const response = await api.get(`/docentes-guia/${docenteId}/estudiantes`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al obtener estudiantes asignados." };
+    }
+  },
+
+  assignStudent: async (docenteId, estudianteId) => {
+    try {
+      const response = await api.post("/docentes-guia/asignar-estudiante", {
+        docente_id: docenteId,
+        estudiante_id: estudianteId
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al asignar el estudiante." };
+    }
+  },
+
+  unassignStudent: async (docenteId, estudianteId) => {
+    try {
+      const response = await api.post("/docentes-guia/desasignar-estudiante", {
+        docente_id: docenteId,
+        estudiante_id: estudianteId
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al quitar la asignación." };
+    }
+  },
+
+  toggleFormularioGuide: async (docenteId, formularioKey, habilitado) => {
+    try {
+      const response = await api.patch("/docentes-guia/toggle-formulario-docente", {
+        docente_id: docenteId,
+        formulario_key: formularioKey,
+        habilitado
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al guardar la configuración del formulario." };
+    }
   }
 };

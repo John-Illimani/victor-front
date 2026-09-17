@@ -624,8 +624,7 @@ export const StudentsManagement = () => {
               />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Control centralizado de matriculados, tutores asignados y fichas
-              evaluativas adaptadas de 1ro a 5to Año (Gestión 2026).
+              Control centralizado de matriculados de gestiones activas, tutores asignados y fichas evaluativas adaptadas.
             </p>
           </div>
 
@@ -791,13 +790,13 @@ export const StudentsManagement = () => {
                         {student.especialidad || "Educación Primaria"}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-700">
-                        2026
+                        {student.gestion_academica || "2026"}
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-emerald-800">
-  {student.da_nombre
-    ? `${student.da_nombre} ${student.da_apellido}`
-    : "Sin Asignar"}
-</td>
+                        {student.da_nombre
+                          ? `${student.da_nombre} ${student.da_apellido}`
+                          : "Sin Asignar"}
+                      </td>
 
                       <td className="py-3.5 px-4 text-center">
                         <button
@@ -854,7 +853,7 @@ export const StudentsManagement = () => {
                     colSpan="10"
                     className="py-8 text-center text-slate-400 font-medium"
                   >
-                    No se encontraron estudiantes coincidentes.
+                    No se encontraron estudiantes para la gestión académica activa.
                   </td>
                 </tr>
               )}
@@ -1131,7 +1130,9 @@ export const StudentsManagement = () => {
               </div>
               <div>
                 <span className="font-bold text-slate-400 block">Gestión:</span>{" "}
-                <span className="font-bold text-slate-800 block">2026</span>
+                <span className="font-bold text-slate-800 block">
+                  {selectedStudent.gestion_academica || "2026"}
+                </span>
               </div>
             </div>
 
@@ -1191,7 +1192,7 @@ export const StudentsManagement = () => {
                     PRESIDENCIA DEL ESTADO PLURINACIONAL DE BOLIVIA - MINISTERIO DE EDUCACIÓN
                   </h4>
                   <h3 className="text-xs font-black uppercase text-slate-800">
-                    {selectedStudent.ano_formacion} - GESTIÓN 2026
+                    {selectedStudent.ano_formacion} - GESTIÓN {selectedStudent.gestion_academica || "2026"}
                   </h3>
                 </div>
 

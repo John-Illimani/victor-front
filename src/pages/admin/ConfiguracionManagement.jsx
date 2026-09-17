@@ -10,41 +10,20 @@ import {
   Sparkles,
   Save,
   KeyRound,
-  Bell
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 
+import { userService } from '../../services/userService';
+
 export const ConfiguracionManagement = () => {
-  // Cargar usuario actual
-  const [currentUser, setCurrentUser] = useState({
-    nombre: 'Administrador General',
-    username: 'admin',
-    correo: 'admin@esfm.edu.bo',
-    telefono: '70000000'
-  });
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        setCurrentUser(prev => ({
-          ...prev,
-          nombre: `${parsed.nombre || 'Administrador'} ${parsed.apellido || ''}`.trim(),
-          username: parsed.username || 'admin',
-          correo: parsed.email || 'admin@esfm.edu.bo'
-        }));
-      } catch (e) {
-        console.error("Error al cargar perfil", e);
-      }
-    }
-  }, []);
-
   // Formulario Mi cuenta
   const [profileData, setProfileData] = useState({
-    nombre: currentUser.nombre,
-    username: currentUser.username,
-    correo: currentUser.correo,
-    telefono: currentUser.telefono
+    nombre: '',
+    apellido: '',
+    username: '',
+    correo: '',
+    telefono: ''
   });
 
   // Formulario Seguridad
@@ -54,18 +33,74 @@ export const ConfiguracionManagement = () => {
     confirmPassword: ''
   });
 
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingSecurity, setLoadingSecurity] = useState(false);
   const [message, setMessage] = useState(null);
 
-  // Actualizar Mi Cuenta
-  const handleUpdateProfile = (e) => {
+  // Cargar usuario autenticado desde localStorage al iniciar
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        setProfileData({
+          nombre: parsed.nombre || '',
+          apellido: parsed.apellido || '',
+          username: parsed.username || '',
+          correo: parsed.correo || parsed.email || '',
+          telefono: parsed.telefono || ''
+        });
+      } catch (e) {
+        console.error("Error al cargar perfil desde localStorage", e);
+      }
+    }
+  }, []);
+
+  // Actualizar Mi Cuenta (Nombre, Apellido, Username y Teléfono)
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    setMessage({ type: 'success', text: 'Datos de la cuenta actualizados correctamente.' });
-    setTimeout(() => setMessage(null), 4000);
+    setMessage(null);
+    setLoadingProfile(true);
+
+    try {
+      const payload = {
+        nombre: profileData.nombre,
+        apellido: profileData.apellido,
+        username: profileData.username,
+        telefono: profileData.telefono
+      };
+
+      // Usa la ruta /usuarios/me/perfil que lee el ID del Token JWT
+      const response = await userService.updateProfile(payload);
+
+      // Actualizar localStorage manteniendo el correo previo e integrando los datos actualizados
+      const currentUserLocal = JSON.parse(localStorage.getItem("user") || "{}");
+      const updatedUser = {
+        ...currentUserLocal,
+        nombre: profileData.nombre,
+        apellido: profileData.apellido,
+        username: profileData.username,
+        telefono: profileData.telefono,
+        ...(response?.user || {})
+      };
+      
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      window.dispatchEvent(new Event("storage"));
+
+      setMessage({ type: 'success', text: 'Datos de la cuenta actualizados correctamente.' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'No se pudo actualizar el perfil.' });
+    } finally {
+      setLoadingProfile(false);
+      setTimeout(() => setMessage(null), 5000);
+    }
   };
 
   // Cambiar Contraseña
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
+    setMessage(null);
+
     if (securityData.newPassword !== securityData.confirmPassword) {
       setMessage({ type: 'error', text: 'La nueva contraseña y la confirmación no coinciden.' });
       return;
@@ -75,9 +110,22 @@ export const ConfiguracionManagement = () => {
       return;
     }
 
-    setMessage({ type: 'success', text: 'Contraseña actualizada con éxito. Sus credenciales han sido reaseguradas.' });
-    setSecurityData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    setTimeout(() => setMessage(null), 4000);
+    setLoadingSecurity(true);
+
+    try {
+      await userService.changePassword({
+        currentPassword: securityData.currentPassword,
+        newPassword: securityData.newPassword
+      });
+
+      setMessage({ type: 'success', text: 'Contraseña actualizada con éxito. Credenciales reaseguradas.' });
+      setSecurityData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Error al cambiar contraseña. Verifique su contraseña actual.' });
+    } finally {
+      setLoadingSecurity(false);
+      setTimeout(() => setMessage(null), 5000);
+    }
   };
 
   return (
@@ -95,7 +143,7 @@ export const ConfiguracionManagement = () => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Gestión del perfil personal del Administrador y resguardo de credenciales de acceso al sistema IEPC-PEC.
+              Gestión del perfil personal del usuario autenticado y resguardo de credenciales de acceso al sistema IEPC-PEC.
             </p>
           </div>
         </div>
@@ -108,14 +156,14 @@ export const ConfiguracionManagement = () => {
             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
             : 'bg-rose-50 text-rose-800 border border-rose-200'
         }`}>
-          <CheckCircle2 size={16} />
+          {message.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           {message.text}
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         
-        {/* BLOQUE 1: MI CUENTA (SECCIÓN 16 DEL MANUAL) */}
+        {/* BLOQUE 1: MI CUENTA */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
           <div className="border-b border-slate-100 pb-4">
             <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
@@ -128,17 +176,33 @@ export const ConfiguracionManagement = () => {
           </div>
 
           <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs">
-            <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Nombre Completo *</label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  required
-                  value={profileData.nombre}
-                  onChange={(e) => setProfileData({ ...profileData, nombre: e.target.value })}
-                  className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none"
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-extrabold text-slate-700 mb-1">Nombre *</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    required
+                    value={profileData.nombre}
+                    onChange={(e) => setProfileData({ ...profileData, nombre: e.target.value })}
+                    className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-extrabold text-slate-700 mb-1">Apellido *</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    required
+                    value={profileData.apellido}
+                    onChange={(e) => setProfileData({ ...profileData, apellido: e.target.value })}
+                    className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
@@ -156,19 +220,7 @@ export const ConfiguracionManagement = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Correo Electrónico *</label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
-                <input
-                  type="email"
-                  required
-                  value={profileData.correo}
-                  onChange={(e) => setProfileData({ ...profileData, correo: e.target.value })}
-                  className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
-                />
-              </div>
-            </div>
+            
 
             <div>
               <label className="block font-extrabold text-slate-700 mb-1">Teléfono / Celular</label>
@@ -186,9 +238,14 @@ export const ConfiguracionManagement = () => {
             <div className="pt-2">
               <button
                 type="submit"
-                className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all cursor-pointer"
+                disabled={loadingProfile}
+                className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all cursor-pointer disabled:opacity-50"
               >
-                <Save size={16} />
+                {loadingProfile ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Save size={16} />
+                )}
                 Guardar Cambios
               </button>
             </div>
@@ -213,7 +270,7 @@ export const ConfiguracionManagement = () => {
               <div className="relative">
                 <KeyRound className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="password"
+                  type="text"
                   required
                   placeholder="••••••••"
                   value={securityData.currentPassword}
@@ -228,7 +285,7 @@ export const ConfiguracionManagement = () => {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="password"
+                  type="text"
                   required
                   placeholder="••••••••"
                   value={securityData.newPassword}
@@ -243,7 +300,7 @@ export const ConfiguracionManagement = () => {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="password"
+                  type="text"
                   required
                   placeholder="••••••••"
                   value={securityData.confirmPassword}
@@ -256,10 +313,15 @@ export const ConfiguracionManagement = () => {
             <div className="pt-2">
               <button
                 type="submit"
-                className="flex items-center gap-2 rounded-2xl bg-[#8C731A] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#735E14] transition-all cursor-pointer"
+                disabled={loadingSecurity}
+                className="flex items-center gap-2 rounded-2xl bg-[#8C731A] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#735E14] transition-all cursor-pointer disabled:opacity-50"
               >
-                <Lock size={16} />
-                [ Cambiar contraseña ]
+                {loadingSecurity ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Lock size={16} />
+                )}
+                Cambiar contraseña
               </button>
             </div>
           </form>

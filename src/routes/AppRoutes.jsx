@@ -63,6 +63,8 @@ import { MisCalificacionesEstudiante } from "../pages/student/MisCalificacionesE
 import { VerificarIntegridadEstudiante } from "../pages/student/VerificarIntegridadEstudiante";
 import { MiCuentaEstudiante } from "../pages/student/MiCuentaEstudiante";
 import { ProtectedRoute } from "./ProtectedRoute";
+import { ActaAnoContainer } from "../pages/admin/actas/ActaAnoContainer";
+import { ReporteEspecialidad, ReporteEtapa, ReporteGestion } from "../pages/admin/reportes/ReportesPages";
 
 function AppRoutes() {
   return (
@@ -98,24 +100,8 @@ function AppRoutes() {
               />
             </Route>
             <Route path="actas">
-  {/* Gestión 2025 */}
-  <Route path="2025">
-    <Route path="1" element={<Actas2025Ano1 />} />
-    <Route path="2" element={<Actas2025Ano2 />} />
-    <Route path="3" element={<Actas2025Ano3 />} />
-    <Route path="4" element={<Actas2025Ano4 />} />
-    <Route path="5" element={<Actas2025Ano5 />} />
-  </Route>
-
-  {/* Gestión 2026 */}
-  <Route path="2026">
-    <Route path="1" element={<Actas2026Ano1 />} />
-    <Route path="2" element={<Actas2026Ano2 />} />
-    <Route path="3" element={<Actas2026Ano3 />} />
-    <Route path="4" element={<Actas2026Ano4 />} />
-    <Route path="5" element={<Actas2026Ano5 />} />
-  </Route>
-</Route>
+              <Route path=":gestion/:ano" element={<ActaAnoContainer />} />
+            </Route>
             <Route
               path="blockchain"
               element={<BlockchainIntegrityManagement />}
@@ -124,6 +110,9 @@ function AppRoutes() {
               path="validacion"
               element={<RevisionValidacionManagement />}
             />
+            <Route path="reportes/especialidad" element={<ReporteEspecialidad />} />
+          <Route path="reportes/etapa" element={<ReporteEtapa />} />
+          <Route path="reportes/gestion" element={<ReporteGestion />} />
             <Route path="configuracion" element={<ConfiguracionManagement />} />
           </Route>
         </Route>

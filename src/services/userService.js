@@ -63,5 +63,24 @@ export const userService = {
     } catch (error) {
       throw error.response?.data || { message: "Error en la importación masiva de usuarios." };
     }
+  },
+  
+  updateProfile: async (userData) => {
+    try {
+      const response = await api.put("/usuarios/me/perfil", userData);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al actualizar la información del perfil." };
+    }
+  },
+
+  changePassword: async (passwords) => {
+    try {
+      const response = await api.put("/usuarios/me/password", passwords);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al cambiar la contraseña." };
+    }
   }
+
 };

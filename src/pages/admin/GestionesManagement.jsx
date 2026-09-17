@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Plus, 
@@ -6,46 +6,27 @@ import {
   Eye, 
   Lock, 
   Unlock, 
-  CheckCircle2, 
-  AlertTriangle, 
   X, 
   Sparkles,
-  Clock,
-  History,
-  Archive,
-  Layers
+  Loader2,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
+import { gestionService } from '../../services/gestionService';
+
 export const GestionesManagement = () => {
-  // Lista de gestiones académicas (Soporta incorporación de futuros años sin alterar el sistema)
-  const [gestiones, setGestiones] = useState([
-    {
-      id: 'GES-2025',
-      gestion: '2025',
-      descripcion: 'Gestión Académica de Práctica Educativa IEPC-PEC 2025',
-      estado: 'Cerrada',
-      fechaInicio: '01/02/2025',
-      fechaFin: '30/11/2025',
-      totalEstudiantes: 1120,
-      totalActas: 310
-    },
-    {
-      id: 'GES-2026',
-      gestion: '2026',
-      descripcion: 'Gestión Académica Oficial Vigente IEPC-PEC 2026',
-      estado: 'Activa',
-      fechaInicio: '02/02/2026',
-      fechaFin: '04/12/2026',
-      totalEstudiantes: 1240,
-      totalActas: 348
-    }
-  ]);
+  const [gestiones, setGestiones] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Modales
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedGestion, setSelectedGestion] = useState(null);
+
+  // Feedback Modal
+  const [feedbackModal, setFeedbackModal] = useState({ show: false, title: '', message: '', type: 'success' });
 
   // Formulario
   const [formData, setFormData] = useState({
@@ -56,59 +37,81 @@ export const GestionesManagement = () => {
     estado: 'Activa'
   });
 
-  // Crear Nueva Gestión (Ej. 2027)
-  const handleCreateGestion = (e) => {
-    e.preventDefault();
-    const newGestionObj = {
-      id: `GES-${formData.gestion}`,
-      gestion: formData.gestion,
-      descripcion: formData.descripcion,
-      estado: formData.estado,
-      fechaInicio: formData.fechaInicio,
-      fechaFin: formData.fechaFin,
-      totalEstudiantes: 0,
-      totalActas: 0
-    };
+  const showFeedback = (title, message, type = 'success') => {
+    setFeedbackModal({ show: true, title, message, type });
+  };
 
-    // Si se activa la nueva gestión, las demás se ajustan según la regla de negocio
-    if (formData.estado === 'Activa') {
-      setGestiones(gestiones.map(g => ({ ...g, estado: 'Cerrada' })).concat(newGestionObj));
-    } else {
-      setGestiones([...gestiones, newGestionObj]);
+  const fetchGestiones = async () => {
+    setLoading(true);
+    try {
+      const data = await gestionService.getGestiones();
+      setGestiones(data);
+    } catch (err) {
+      showFeedback('Error', err.message || 'Error al conectar con la base de datos.', 'error');
+    } finally {
+      setLoading(false);
     }
-
-    setShowCreateModal(false);
-    setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Activa' });
   };
 
-  // Cambiar Estado (Activar / Cerrar)
-  const toggleGestionStatus = (id) => {
-    setGestiones(gestiones.map(g => {
-      if (g.id === id) {
-        return { ...g, estado: g.estado === 'Activa' ? 'Cerrada' : 'Activa' };
-      }
-      return g;
-    }));
+  useEffect(() => {
+    fetchGestiones();
+  }, []);
+
+  const handleCreateGestion = async (e) => {
+    e.preventDefault();
+    try {
+      await gestionService.createGestion(formData);
+      showFeedback('Éxito', `La gestión ${formData.gestion} ha sido creada correctamente.`, 'success');
+      setShowCreateModal(false);
+      setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Activa' });
+      
+      // Notificación instantánea al Sidebar
+      window.dispatchEvent(new Event("gestionChanged"));
+      fetchGestiones();
+    } catch (err) {
+      showFeedback('Error al Crear', err.message || 'No se pudo guardar la gestión.', 'error');
+    }
   };
 
-  // Abrir Modal de Edición
+  const toggleGestionStatus = async (g) => {
+    const nuevoEstado = g.estado === 'Activa' ? 'Cerrada' : 'Activa';
+    try {
+      const res = await gestionService.toggleEstadoGestion(g.id, nuevoEstado);
+      showFeedback('Estado Actualizado', res.message || `La gestión ${g.gestion} cambio a ${nuevoEstado}.`, 'success');
+      
+      // Notificación instantánea al Sidebar
+      window.dispatchEvent(new Event("gestionChanged"));
+      fetchGestiones();
+    } catch (err) {
+      showFeedback('Error', err.message || 'No se pudo cambiar el estado.', 'error');
+    }
+  };
+
   const handleOpenEdit = (g) => {
     setSelectedGestion(g);
     setFormData({
       gestion: g.gestion,
-      descripcion: g.descripcion,
-      fechaInicio: g.fechaInicio,
-      fechaFin: g.fechaFin,
+      descripcion: g.descripcion || '',
+      fechaInicio: g.fechaInicio || '',
+      fechaFin: g.fechaFin || '',
       estado: g.estado
     });
     setShowEditModal(true);
   };
 
-  // Guardar Edición
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
-    setGestiones(gestiones.map(g => g.id === selectedGestion.id ? { ...g, ...formData } : g));
-    setShowEditModal(false);
+    try {
+      await gestionService.updateGestion(selectedGestion.id, formData);
+      showFeedback('Actualizado', `Los datos de la gestión ${formData.gestion} fueron actualizados.`, 'success');
+      setShowEditModal(false);
+      
+      // Notificación instantánea al Sidebar
+      window.dispatchEvent(new Event("gestionChanged"));
+      fetchGestiones();
+    } catch (err) {
+      showFeedback('Error', err.message || 'No se pudo guardar los cambios.', 'error');
+    }
   };
 
   return (
@@ -131,7 +134,10 @@ export const GestionesManagement = () => {
           </div>
 
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => {
+              setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Activa' });
+              setShowCreateModal(true);
+            }}
             className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-lg hover:bg-[#a32334] transition-all cursor-pointer shrink-0"
           >
             <Plus size={18} />
@@ -140,79 +146,85 @@ export const GestionesManagement = () => {
         </div>
       </div>
 
-      {/* TARJETAS DE GESTIONES REGISTRADAS */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {gestiones.map((g) => (
-          <div 
-            key={g.id} 
-            className={`rounded-3xl border p-6 bg-white shadow-sm transition-all relative overflow-hidden flex flex-col justify-between ${
-              g.estado === 'Activa' ? 'border-[#8C731A] ring-2 ring-[#8C731A]/20' : 'border-slate-200'
-            }`}
-          >
-            {/* Indicador de Estado Superior */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-3xl font-black font-mono text-slate-900 tracking-tight">
-                {g.gestion}
-              </span>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                g.estado === 'Activa' 
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
-                  : 'bg-slate-100 text-slate-600 border border-slate-200'
-              }`}>
-                {g.estado === 'Activa' ? <Unlock size={12} /> : <Lock size={12} />}
-                {g.estado}
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-500 font-medium mb-4">{g.descripcion}</p>
-
-            <div className="space-y-2 rounded-2xl bg-slate-50 p-3.5 border border-slate-100 text-xs mb-5">
-              <div className="flex justify-between font-medium">
-                <span className="text-slate-400">Estudiantes matriculados:</span>
-                <span className="font-bold text-slate-800 font-mono">{g.totalEstudiantes}</span>
+      {/* TARJETAS DE GESTIONES */}
+      {loading ? (
+        <div className="p-12 text-center text-slate-500 font-bold">
+          <Loader2 className="animate-spin inline mr-2 text-[#801B28]" size={24} />
+          Cargando gestiones académicas...
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {gestiones.map((g) => (
+            <div 
+              key={g.id} 
+              className={`rounded-3xl border p-6 bg-white shadow-sm transition-all relative overflow-hidden flex flex-col justify-between ${
+                g.estado === 'Activa' ? 'border-[#8C731A] ring-2 ring-[#8C731A]/20' : 'border-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-3xl font-black font-mono text-slate-900 tracking-tight">
+                  {g.gestion}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                  g.estado === 'Activa' 
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}>
+                  {g.estado === 'Activa' ? <Unlock size={12} /> : <Lock size={12} />}
+                  {g.estado}
+                </span>
               </div>
-              <div className="flex justify-between font-medium">
-                <span className="text-slate-400">Actas IEPC-PEC registradas:</span>
-                <span className="font-bold text-slate-800 font-mono">{g.totalActas}</span>
+
+              <p className="text-xs text-slate-500 font-medium mb-4 line-clamp-2">{g.descripcion || 'Sin descripción disponible.'}</p>
+
+              <div className="space-y-2 rounded-2xl bg-slate-50 p-3.5 border border-slate-100 text-xs mb-5">
+                <div className="flex justify-between font-medium">
+                  <span className="text-slate-400">Estudiantes matriculados:</span>
+                  <span className="font-bold text-slate-800 font-mono">{g.totalEstudiantes}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span className="text-slate-400">Actas IEPC-PEC registradas:</span>
+                  <span className="font-bold text-slate-800 font-mono">{g.totalActas}</span>
+                </div>
               </div>
-            </div>
 
-            {/* Acciones */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-              <button
-                onClick={() => { setSelectedGestion(g); setShowDetailModal(true); }}
-                className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-[#8C731A] transition-colors cursor-pointer"
-              >
-                <Eye size={14} /> Consultar
-              </button>
-
-              <div className="flex items-center gap-2">
+              {/* Acciones */}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <button
-                  onClick={() => handleOpenEdit(g)}
-                  className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-blue-600 hover:text-white transition-all cursor-pointer"
-                  title="Editar Gestión"
+                  onClick={() => { setSelectedGestion(g); setShowDetailModal(true); }}
+                  className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-[#8C731A] transition-colors cursor-pointer"
                 >
-                  <Edit size={14} />
+                  <Eye size={14} /> Consultar
                 </button>
 
-                <button
-                  onClick={() => toggleGestionStatus(g.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    g.estado === 'Activa' 
-                      ? 'bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white' 
-                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white'
-                  }`}
-                >
-                  {g.estado === 'Activa' ? 'Cerrar' : 'Activar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleOpenEdit(g)}
+                    className="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-blue-600 hover:text-white transition-all cursor-pointer"
+                    title="Editar Gestión"
+                  >
+                    <Edit size={14} />
+                  </button>
+
+                  <button
+                    onClick={() => toggleGestionStatus(g)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      g.estado === 'Activa' 
+                        ? 'bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white' 
+                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white'
+                    }`}
+                  >
+                    {g.estado === 'Activa' ? 'Deshabilitar' : 'Habilitar'}
+                  </button>
+                </div>
               </div>
+
             </div>
+          ))}
+        </div>
+      )}
 
-          </div>
-        ))}
-      </div>
-
-      {/* MODAL: CREAR GESTIÓN */}
+      {/* MODAL CREAR GESTIÓN */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
@@ -255,20 +267,18 @@ export const GestionesManagement = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-extrabold text-slate-700 mb-1">Fecha Inicio *</label>
+                  <label className="block font-extrabold text-slate-700 mb-1">Fecha Inicio</label>
                   <input
                     type="date"
-                    required
                     value={formData.fechaInicio}
                     onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-extrabold text-slate-700 mb-1">Fecha Fin *</label>
+                  <label className="block font-extrabold text-slate-700 mb-1">Fecha Fin</label>
                   <input
                     type="date"
-                    required
                     value={formData.fechaFin}
                     onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
@@ -308,7 +318,7 @@ export const GestionesManagement = () => {
         </div>
       )}
 
-      {/* MODAL: EDITAR GESTIÓN */}
+      {/* MODAL EDITAR GESTIÓN */}
       {showEditModal && selectedGestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
@@ -333,6 +343,27 @@ export const GestionesManagement = () => {
                   onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">Fecha Inicio</label>
+                  <input
+                    type="date"
+                    value={formData.fechaInicio}
+                    onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">Fecha Fin</label>
+                  <input
+                    type="date"
+                    value={formData.fechaFin}
+                    onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
@@ -367,7 +398,7 @@ export const GestionesManagement = () => {
         </div>
       )}
 
-      {/* MODAL: CONSULTAR GESTIÓN */}
+      {/* MODAL CONSULTAR GESTIÓN */}
       {showDetailModal && selectedGestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
@@ -389,7 +420,7 @@ export const GestionesManagement = () => {
               </div>
               <div>
                 <span className="text-slate-400 block font-bold">Descripción:</span>
-                <span className="text-slate-800 font-medium">{selectedGestion.descripcion}</span>
+                <span className="text-slate-800 font-medium">{selectedGestion.descripcion || 'N/A'}</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -411,6 +442,32 @@ export const GestionesManagement = () => {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FEEDBACK */}
+      {feedbackModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95">
+            <div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full ${
+              feedbackModal.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+            }`}>
+              {feedbackModal.type === 'success' ? <CheckCircle2 size={30} /> : <AlertCircle size={30} />}
+            </div>
+
+            <h3 className="text-lg font-black text-slate-900 mb-1">{feedbackModal.title}</h3>
+            <p className="text-xs text-slate-600 leading-relaxed mb-6">{feedbackModal.message}</p>
+
+            <button
+              type="button"
+              onClick={() => setFeedbackModal({ ...feedbackModal, show: false })}
+              className={`w-full rounded-xl py-2.5 text-xs font-bold text-white shadow-md cursor-pointer ${
+                feedbackModal.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+              }`}
+            >
+              Aceptar
+            </button>
           </div>
         </div>
       )}

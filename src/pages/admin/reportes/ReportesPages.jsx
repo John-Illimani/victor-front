@@ -5,7 +5,7 @@ export const ReporteEspecialidad = () => (
   <ReporteBaseView 
     tipo="especialidad"
     titulo="Reporte por Especialidad"
-    descripcion="Consolidado de calificaciones y estudiantes filtrados según área académica."
+    descripcion="Consolidado de calificaciones y asignación de docentes acompañantes filtrados por área académica."
   />
 );
 
@@ -13,7 +13,7 @@ export const ReporteEtapa = () => (
   <ReporteBaseView 
     tipo="etapa"
     titulo="Reporte por Etapa"
-    descripcion="Seguimiento de notas por cada ficha (F-1 a F-6) y promedios por etapa."
+    descripcion="Evaluación cualitativa y cuantitativa por ficha y promedios finales según el año de formación."
   />
 );
 
@@ -21,14 +21,6 @@ export const ReporteGestion = () => (
   <ReporteBaseView 
     tipo="gestion"
     titulo="Reporte por Gestión"
-    descripcion="Análisis comparativo de avance entre períodos académicos."
-  />
-);
-
-export const ReporteEstudiante = () => (
-  <ReporteBaseView 
-    tipo="estudiante"
-    titulo="Reporte por Estudiante"
-    descripcion="Ficha consolidada de progreso individual por estudiante."
+    descripcion="Nómina completa de datos personales y registro de matriculación de estudiantes filtrados por año."
   />
 );
