@@ -1,41 +1,158 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileCheck2, 
-  Sparkles, 
-  CheckCircle2, 
-  Clock, 
   Eye, 
-  Download, 
-  ShieldCheck,
-  FileText
+  Sparkles, 
+  Loader2, 
+  AlertCircle,
+  FileText,
+  X,
+  LogOut,
+  CheckCircle2,
+  FileQuestion
 } from 'lucide-react';
 
+import { studentService } from '../../services/studentService';
+
+// IMPORTACIÓN DE COMPONENTES EXPLÍCITOS PARA ACTAS DE EVALUACIÓN
+import { ActaConformacion1erAno } from '../admin/fichas/1año/ActaConformacion1erAno';
+import { ActaInicio2doAno } from '../admin/fichas/2año/ActaInicio2doAno';
+import { ActaConformacion2doAno } from '../admin/fichas/2año/ActaConformacion2doAno';
+import { ActaConformacion3erAno } from '../admin/fichas/3año/ActaConformacion3erAno';
+import { ActaInicio3erAno } from '../admin/fichas/3año/ActaInicio3erAno';
+import { ActaSocializacion3erAno } from '../admin/fichas/3año/ActaSocializacion3erAno';
+import { ActaFinalEvolucion_4toAno } from '../admin/fichas/4año/ActaFinalEvolucion_4toAno';
+import { ActaPostergacion_4toAno } from '../admin/fichas/4año/ActaPostergacion_4toAno';
+import { ActaPostergacion_5toAno } from '../admin/fichas/5año/ActaPostergacion_5toAno';
+
+// CATÁLOGO COMPLETO DE ACTAS POR AÑO DE FORMACIÓN
+const CATALAGO_ACTAS_ESTUDIANTE = [
+  // 1er Año
+  { codigo: "1_ACTA_EQUIPO", nombre: "Acta de Conformación del Equipo Comunitario", ano: "1er Año" },
+  
+  // 2do Año
+  { codigo: "2_ACTA_INICIO", nombre: "Acta de Inicio - 2do Año (IEPC-PEC)", ano: "2do Año" },
+  { codigo: "2_ACTA_EQUIPO", nombre: "Acta de Conformación de Equipo Comunitario", ano: "2do Año" },
+  
+  // 3er Año
+  { codigo: "3_ACTA_EQUIPO", nombre: "Acta de Conformación y Compromiso de Equipo", ano: "3er Año" },
+  { codigo: "3_ACTA_INICIO", nombre: "Acta de Inicio - 3er Año", ano: "3er Año" },
+  { codigo: "3_ACTA_SOCIALIZACION", nombre: "Acta de Socialización del Diagnóstico", ano: "3er Año" },
+  
+  // 4to Año
+  { codigo: "4_ACTA_FINAL", nombre: "Acta Final de Evaluación del Diseño Metodológico", ano: "4to Año" },
+  { codigo: "4_ACTA_POSTERGACION", nombre: "Acta de Postergación de la Socialización Oral", ano: "4to Año" },
+  
+  // 5to Año
+  { codigo: "5_ACTA_POSTERGACION", nombre: "Acta de Postergación de la Socialización de Trabajo de Grado", ano: "5to Año" }
+];
+
+// COMPONENTES DE ACTAS MAPEADOS
+const COMPONENTES_ACTAS_MAP = {
+  "1_ACTA_EQUIPO": ActaConformacion1erAno,
+  "2_ACTA_INICIO": ActaInicio2doAno,
+  "2_ACTA_EQUIPO": ActaConformacion2doAno,
+  "3_ACTA_EQUIPO": ActaConformacion3erAno,
+  "3_ACTA_INICIO": ActaInicio3erAno,
+  "3_ACTA_SOCIALIZACION": ActaSocializacion3erAno,
+  "4_ACTA_FINAL": ActaFinalEvolucion_4toAno,
+  "4_ACTA_POSTERGACION": ActaPostergacion_4toAno,
+  "5_ACTA_POSTERGACION": ActaPostergacion_5toAno
+};
+
+// HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
+const normalizarAnoStr = (cadena) => {
+  if (!cadena) return '';
+  const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (c.includes("1") || c.includes("primer")) return "1er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("3") || c.includes("tercer")) return "3er Año";
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("5") || c.includes("quinto")) return "5to Año";
+  return cadena;
+};
+
 export const MisActasEstudiante = () => {
-  // Lista de actas pertenecientes al estudiante practicante
-  const [actas, setActas] = useState([
-    {
-      id: 'ACTA-2026-001',
-      tipoActa: 'Acta Final de Práctica IEPC-PEC',
-      etapa: 'Etapa Final',
-      fechaEmision: '08/09/2026',
-      estado: 'Validada',
-      promedioFinal: 88.8,
-      firmadoDocente: true,
-      firmadoGuia: true,
-      hashBlockchain: 'A8F493BC8821DE019382F9A8F493BC8821DE019382F9A8F493BC8821DE019382'
-    },
-    {
-      id: 'ACTA-2026-002',
-      tipoActa: 'Acta de Conformación de Equipo y Asignación de U.E.',
-      etapa: 'Etapa Preparatoria',
-      fechaEmision: '15/02/2026',
-      estado: 'Validada',
-      promedioFinal: null,
-      firmadoDocente: true,
-      firmadoGuia: true,
-      hashBlockchain: 'C731A89201920D83B891A8F493BC8821DE019382F9A8F493BC8821DE019382F'
-    }
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(null);
+  
+  const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [actasStatusMap, setActasStatusMap] = useState({});
+
+  // ESTADO DE VISTA DE ACTA ACTIVA
+  const [activeActa, setActiveActa] = useState(null);
+  const [fichaData, setFichaData] = useState({});
+
+  useEffect(() => {
+    const cargarActasEstudiante = async () => {
+      setLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const savedUserStr = localStorage.getItem("user");
+        if (!savedUserStr) {
+          setErrorMessage("No se encontró una sesión activa de estudiante.");
+          setLoading(false);
+          return;
+        }
+
+        const student = JSON.parse(savedUserStr);
+        setEstudianteLogueado(student);
+
+        const studentId = student.id || student.estudiante_id || student.ci;
+        if (!studentId) {
+          setErrorMessage("Identificador de estudiante no válido.");
+          setLoading(false);
+          return;
+        }
+
+        // Consultar los datos almacenados para cada acta
+        const statusMap = {};
+        
+        await Promise.all(
+          CATALAGO_ACTAS_ESTUDIANTE.map(async (acta) => {
+            try {
+              const res = await studentService.getFicha(studentId, acta.codigo);
+              const datos = res?.datos || {};
+              const tieneInformacion = Object.keys(datos).length > 0;
+
+              statusMap[acta.codigo] = {
+                hasData: tieneInformacion,
+                data: datos
+              };
+            } catch (err) {
+              statusMap[acta.codigo] = { hasData: false, data: {} };
+            }
+          })
+        );
+
+        setActasStatusMap(statusMap);
+
+      } catch (err) {
+        console.error("Error al cargar las actas del estudiante:", err);
+        setErrorMessage("Error de conexión al obtener la información de tus actas.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarActasEstudiante();
+  }, []);
+
+  // FILTRAR ACTAS POR EL AÑO DE FORMACIÓN DEL ESTUDIANTE LOGUEADO
+  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion || '1er Año');
+  const misActasCorrespondientes = CATALAGO_ACTAS_ESTUDIANTE.filter(
+    acta => normalizarAnoStr(acta.ano) === anoEstudiante
+  );
+
+  // ABRIR CUALQUIER ACTA SIEMPRE EN SOLO LECTURA
+  const handleOpenActa = (acta) => {
+    const status = actasStatusMap[acta.codigo];
+    setActiveActa(acta);
+    setFichaData(status?.data || {});
+  };
+
+  const ComponenteActaExplicito = activeActa ? COMPONENTES_ACTAS_MAP[activeActa.codigo] : null;
 
   return (
     <div className="space-y-6 font-sans">
@@ -45,94 +162,159 @@ export const MisActasEstudiante = () => {
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-[#F3EFCF] backdrop-blur-md border border-white/15">
-              <FileCheck2 size={14} className="text-[#8C731A]" /> Documentos Oficiales
+              <FileCheck2 size={14} className="text-[#8C731A]" /> Documentación Oficial
             </div>
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white flex items-center gap-3">
-              Mis actas
+              Mis Actas
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Consulta de actas oficiales emitidas, estado de firmas de validación y certificación de inmutabilidad.
+              Consulta de actas de evaluación emitidas y registradas en tu expediente académico IEPC-PEC.
             </p>
           </div>
         </div>
       </div>
 
-      {/* LISTADO DE ACTAS */}
-      <div className="space-y-4">
-        {actas.map((item) => {
-          const isValidada = item.estado === 'Validada';
+      {errorMessage && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+          <AlertCircle size={18} />
+          {errorMessage}
+        </div>
+      )}
 
-          return (
-            <div 
-              key={item.id}
-              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4 hover:border-[#8C731A]/40 transition-all"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-[#801B28]">
-                    <FileText size={22} />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-[#8C731A] uppercase tracking-wider block">
-                      {item.etapa}
-                    </span>
-                    <h3 className="font-extrabold text-slate-900 text-sm">{item.tipoActa}</h3>
-                    <span className="text-[10px] font-mono text-slate-400">ID Acta: {item.id} | Fecha: {item.fechaEmision}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {item.promedioFinal && (
-                    <div className="text-right mr-2">
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase">Nota Final</span>
-                      <span className="font-mono font-black text-emerald-700 text-base">{item.promedioFinal} pts</span>
-                    </div>
-                  )}
-
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold ${
-                    isValidada ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {isValidada ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                    {item.estado}
-                  </span>
-                </div>
-              </div>
-
-              {/* DETALLES DE FIRMAS Y ACCIONES */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
-                <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-600">
-                  <span className="flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-                    <CheckCircle2 size={13} className="text-emerald-600" />
-                    Firma Docente Acompañante
-                  </span>
-                  <span className="flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-                    <CheckCircle2 size={13} className="text-emerald-600" />
-                    Firma Docente Guía (U.E.)
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 shrink-0">
-                  <button
-                    onClick={() => alert(`Previsualizando ${item.tipoActa}...`)}
-                    className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
-                  >
-                    <Eye size={15} /> Previsualizar
-                  </button>
-
-                  <button
-                    onClick={() => alert(`Descargando copia oficial de ${item.id} en formato PDF...`)}
-                    className="flex items-center gap-1.5 rounded-2xl bg-[#801B28] px-4 py-2 text-xs font-extrabold text-white hover:bg-[#a32334] transition-all cursor-pointer shadow-md"
-                  >
-                    <Download size={15} /> Descargar PDF
-                  </button>
-                </div>
-              </div>
-
+      {/* TARJETA DE INFORMACIÓN DEL ESTUDIANTE LOGUEADO */}
+      {estudianteLogueado && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100 text-[#801B28]">
+              <FileText size={24} />
             </div>
-          );
-        })}
+            <div>
+              <h2 className="font-black text-slate-900 text-base">
+                {estudianteLogueado.nombre} {estudianteLogueado.apellido}
+              </h2>
+              <span className="text-xs font-mono text-slate-500 font-bold block">
+                C.I.: {estudianteLogueado.ci || 'S/N'} | Usuario: {estudianteLogueado.username}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="px-3.5 py-1.5 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 text-xs font-black uppercase">
+              {anoEstudiante}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* LISTADO DE ACTAS */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+        <div className="border-b border-slate-100 pb-3">
+          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
+            <FileCheck2 size={18} className="text-[#801B28]" />
+            Actas Oficiales de Evaluación — {anoEstudiante}
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Puedes previsualizar el contenido de cualquier acta en modo de solo lectura.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="py-12 text-center font-bold text-slate-500 text-xs">
+            <Loader2 className="animate-spin inline mr-2 text-[#801B28]" size={18} />
+            Cargando expediente de actas...
+          </div>
+        ) : misActasCorrespondientes.length > 0 ? (
+          <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
+            {misActasCorrespondientes.map((acta) => {
+              const status = actasStatusMap[acta.codigo] || { hasData: false };
+              const hasData = status.hasData;
+
+              return (
+                <div
+                  key={acta.codigo}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 text-xs bg-white hover:bg-slate-50/80 transition-colors"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-slate-900 text-sm block">
+                        {acta.nombre}
+                      </span>
+                      {hasData ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 size={11} /> REGISTRADA
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200">
+                          <FileQuestion size={11} /> 
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                      Código: {acta.codigo} — {acta.ano}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => handleOpenActa(acta)}
+                    className="px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 shrink-0 shadow-sm bg-[#801B28] text-white hover:bg-[#a32334] cursor-pointer"
+                  >
+                    <Eye size={14} /> Visualizar Acta
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-slate-400 font-medium text-xs border border-dashed border-slate-200 rounded-2xl">
+            No existen actas programadas para el año de formación {anoEstudiante}.
+          </div>
+        )}
       </div>
+
+      {/* VISTA EN SOLO LECTURA CON HABILITACIÓN DE SCROLL E INHABILITACIÓN DE EDICIÓN */}
+      {activeActa && ComponenteActaExplicito && (
+        <React.Fragment>
+          {/* BOTÓN FLOTANTE SUPERIOR */}
+          <button
+            onClick={() => setActiveActa(null)}
+            className="fixed top-4 right-4 sm:top-6 sm:right-6 z-[9999] bg-[#801B28] text-white p-3 rounded-full shadow-2xl hover:bg-[#a32334] transition-all cursor-pointer border-2 border-white flex items-center gap-2"
+            title="Cerrar Vista"
+          >
+            <X size={22} className="stroke-[3]" />
+            <span className="hidden sm:inline text-xs font-black uppercase pr-1">Cerrar</span>
+          </button>
+
+          {/* BARRA FLOTANTE INFERIOR */}
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999] bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-4">
+            <span className="text-xs font-extrabold text-white hidden sm:inline">
+              VISTA DE SOLO LECTURA — ESTUDIANTE
+            </span>
+            <button
+              onClick={() => setActiveActa(null)}
+              className="bg-[#801B28] hover:bg-[#a32334] text-white px-4 py-1.5 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-2 shadow-md"
+            >
+              <LogOut size={16} /> Salir del Acta
+            </button>
+          </div>
+
+          {/* CONTENEDOR TRASERO QUE PERMITE SCROLL CON CAMPOS INHABILITADOS */}
+          <div className="fixed inset-0 z-[9990] bg-slate-950/70 backdrop-blur-sm overflow-y-auto p-2 sm:p-6">
+            <div className="text-xs [&_button]:hidden [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_input]:bg-slate-100 [&_select]:bg-slate-100 [&_textarea]:bg-slate-100 [&_input]:select-none [&_select]:select-none [&_textarea]:select-none">
+              <ComponenteActaExplicito
+                isOpen={Boolean(activeActa)}
+                onClose={() => setActiveActa(null)}
+                fichaData={fichaData}
+                setFichaData={() => {}}
+                listaDocentes={[]}
+                estudianteSeleccionado={estudianteLogueado}
+                readOnly={true}
+              />
+            </div>
+          </div>
+        </React.Fragment>
+      )}
 
     </div>
   );

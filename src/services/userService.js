@@ -81,6 +81,15 @@ export const userService = {
     } catch (error) {
       throw error.response?.data || { message: "Error al cambiar la contraseña." };
     }
-  }
+  },
+  getProfile: async () => {
+    try {
+      const response = await api.get("/usuarios/me");
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al obtener el perfil actual." };
+    }
+  },
+ 
 
 };

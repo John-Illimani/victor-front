@@ -5,15 +5,14 @@ import {
   FileSpreadsheet, 
   Sparkles,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  GraduationCap
 } from 'lucide-react';
 
-// LIBRERÍAS PARA DESCARGA DIRECTA DE PDF Y EXCEL
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'; // <-- IMPORTANTE: Importación directa de autoTable
+import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
-// SERVICIOS DE API
 import { especialidadService } from '../../../services/especialidadService';
 import { studentService } from '../../../services/studentService';
 import { gestionService } from '../../../services/gestionService';
@@ -24,23 +23,71 @@ import { centralizador3erAnoService } from '../../../services/fichas/3año/centr
 import { centralizador4toAnoService } from '../../../services/fichas/4año/centralizador4toAnoService';
 import { centralizador5toAnoService } from '../../../services/fichas/5año/centralizador5toAnoService';
 
+// MAPEO DE FICHAS Y CAMPOS DEL CENTRALIZADOR SEGÚN EL AÑO DE FORMACIÓN
+const CONFIG_FICHAS_POR_ANO = {
+  '1ro': [
+    { key: 'f1', label: 'F-1', field: ['nota_f1', 'f1'] },
+    { key: 'f2', label: 'F-2', field: ['nota_f2', 'f2'] },
+    { key: 'f3', label: 'F-3', field: ['nota_f3', 'f3'] },
+    { key: 'f4', label: 'F-4', field: ['nota_f4', 'f4'] },
+    { key: 'f5', label: 'F-5', field: ['nota_f5', 'f5'] }
+  ],
+  '2do': [
+    { key: 'f1', label: 'F-1', field: ['nota_f1', 'f1'] },
+    { key: 'f2', label: 'F-2', field: ['nota_f2', 'f2'] },
+    { key: 'f3', label: 'F-3', field: ['nota_f3', 'f3'] },
+    { key: 'f4', label: 'F-4', field: ['nota_f4', 'f4'] },
+    { key: 'f5', label: 'F-5', field: ['nota_f5', 'f5'] },
+    { key: 'f6', label: 'F-6', field: ['nota_f6', 'f6'] }
+  ],
+  '3ro': [
+    { key: 'f1', label: 'A-1', field: ['nota_a1', 'a1'] },
+    { key: 'f2', label: 'B-1', field: ['nota_b1', 'b1'] },
+    { key: 'f3', label: 'B-2', field: ['nota_b2', 'b2'] },
+    { key: 'f4', label: 'B-3', field: ['nota_b3', 'b3'] },
+    { key: 'f5', label: 'B-4', field: ['nota_b4', 'b4'] },
+    { key: 'f6', label: 'B-5', field: ['nota_b5', 'b5'] }
+  ],
+  '4to': [
+    { key: 'f1', label: 'A-1', field: ['nota_a1', 'a1'] },
+    { key: 'f2', label: 'A-2', field: ['nota_a2', 'a2'] },
+    { key: 'f3', label: 'B-1', field: ['nota_b1', 'b1'] },
+    { key: 'f4', label: 'B-2', field: ['nota_b2', 'b2'] },
+    { key: 'f5', label: 'B-3', field: ['nota_b3', 'b3'] },
+    { key: 'f6', label: 'B-4', field: ['nota_b4', 'b4'] },
+    { key: 'f7', label: 'B-5', field: ['nota_b5', 'b5'] },
+    { key: 'f8', label: 'B-6', field: ['nota_b6', 'b6'] },
+    { key: 'f9', label: 'B-7', field: ['nota_b7', 'b7'] },
+    { key: 'f10', label: 'C-1', field: ['nota_c1', 'c1'] },
+    { key: 'f11', label: 'C-2', field: ['nota_c2', 'c2'] }
+  ],
+  '5to': [
+    { key: 'f1', label: 'A-1', field: ['nota_a1', 'a1'] },
+    { key: 'f2', label: 'B-1', field: ['nota_b1', 'b1'] },
+    { key: 'f3', label: 'B-2', field: ['nota_b2', 'b2'] },
+    { key: 'f4', label: 'B-3', field: ['nota_b3', 'b3'] },
+    { key: 'f5', label: 'B-4', field: ['nota_b4', 'b4'] },
+    { key: 'f6', label: 'B-5', field: ['nota_b5', 'b5'] },
+    { key: 'f7', label: 'B-6', field: ['nota_b6', 'b6'] },
+    { key: 'f8', label: 'C-1', field: ['nota_c1', 'c1'] },
+    { key: 'f9', label: 'C-2', field: ['nota_c2', 'c2'] }
+  ]
+};
+
 export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
-  // ESTADOS DE FILTROS REALES
   const [gestiones, setGestiones] = useState([]);
   const [especialidades, setEspecialidades] = useState([]);
 
   const [gestionFilter, setGestionFilter] = useState('2026');
-  const [especialidadFilter, setEspecialidadFilter] = useState(''); // "" = Todas las Especialidades
+  const [especialidadFilter, setEspecialidadFilter] = useState('');
   const [anoFilter, setAnoFilter] = useState('1ro');
 
-  // ESTADOS DE DATOS REALES Y CARGA
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
   const reportRef = useRef();
 
-  // 1. CARGA DE OPCIONES DINÁMICAS (GESTIONES Y ESPECIALIDADES)
   useEffect(() => {
     const fetchCatalogos = async () => {
       try {
@@ -66,10 +113,8 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
     fetchCatalogos();
   }, []);
 
-  // 2. HELPER PARA CONSULTAR LA API DE CENTRALIZADOR SEGÚN EL AÑO DE FORMACIÓN
   const fetchCentralizadorByAno = async (ano, estudianteId) => {
     const anoNorm = String(ano || '').toLowerCase();
-
     try {
       if (anoNorm.includes('1') || anoNorm.includes('primer')) {
         const res = await centralizador1erAnoService.getByEstudiante(estudianteId);
@@ -97,7 +142,6 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
     return {};
   };
 
-  // 3. CARGAR REPORTES CONECTADOS A LAS APIS REALES
   useEffect(() => {
     const loadReportData = async () => {
       setLoading(true);
@@ -130,28 +174,39 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
                 estudiante: `${est.nombre || ''} ${est.apellido || ''}`.trim(),
                 ci: est.ci,
                 especialidad: est.especialidad || 'General',
-                nota: centralData.promedio_numeral || 0,
-                docenteAcompanante: est.docente_acompanante || 'Sin Asignar'
+                nota: centralData.promedio_numeral || centralData.promedio_final || 0,
+                docenteAcompanante: est.da_nombre ? `${est.da_nombre} ${est.da_apellido || ''}` : 'Sin Asignar'
               };
             })
           );
           setReportData(rowsWithCentralizer);
         }
         else if (tipo === 'etapa') {
+          const fichasConfig = CONFIG_FICHAS_POR_ANO[anoFilter] || CONFIG_FICHAS_POR_ANO['1ro'];
+
           const rowsWithFichas = await Promise.all(
             filteredStudents.map(async (est) => {
               const c = await fetchCentralizadorByAno(anoFilter, est.id);
+              
+              const notasFichas = {};
+              fichasConfig.forEach(ficha => {
+                let val = 0;
+                for (const fName of ficha.field) {
+                  if (c[fName] !== undefined && c[fName] !== null) {
+                    val = c[fName];
+                    break;
+                  }
+                }
+                notasFichas[ficha.key] = val;
+              });
+
               return {
                 id: est.id,
                 estudiante: `${est.nombre || ''} ${est.apellido || ''}`.trim(),
                 ci: est.ci,
-                f1: c.nota_f1 || c.nota_a1 || 0,
-                f2: c.nota_f2 || c.nota_a2 || c.nota_b1 || 0,
-                f3: c.nota_f3 || c.nota_b2 || 0,
-                f4: c.nota_f4 || c.nota_b3 || c.nota_b4 || 0,
-                f5: c.nota_f5 || c.nota_b5 || 0,
-                f6: c.nota_f6 || c.nota_c1 || 0,
-                promedio: c.promedio_numeral || 0
+                especialidad: est.especialidad || 'General',
+                ...notasFichas,
+                promedio: c.promedio_numeral || c.promedio_final || 0
               };
             })
           );
@@ -163,6 +218,7 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
             codigoEstudiante: est.codigo_estudiante || est.ci || 'S/C',
             estudiante: `${est.nombre || ''} ${est.apellido || ''}`.trim(),
             ci: est.ci,
+            especialidad: est.especialidad || 'General',
             telefono: est.telefono || 'Sin registro',
             correo: est.correo || `${est.ci}@esfm.edu.bo`,
             anoFormacion: est.ano_formacion || anoFilter,
@@ -173,7 +229,7 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
 
       } catch (err) {
         console.error("Error al construir el reporte:", err);
-        setErrorMessage("No se pudo obtener la información desde el servidor. Verifique la conexión.");
+        setErrorMessage("No se pudo obtener la información desde el servidor.");
       } finally {
         setLoading(false);
       }
@@ -182,24 +238,17 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
     loadReportData();
   }, [tipo, gestionFilter, especialidadFilter, anoFilter]);
 
-  // ETIQUETAS DINÁMICAS DE LAS FICHAS SEGÚN EL AÑO
-  const getFichasHeaders = (ano) => {
-    const anoNorm = String(ano).toLowerCase();
-    if (anoNorm.includes('1') || anoNorm.includes('2')) {
-      return ['F-1', 'F-2', 'F-3', 'F-4', 'F-5', 'F-6'];
-    }
-    if (anoNorm.includes('3')) {
-      return ['A-1', 'B-1', 'B-2', 'B-3', 'B-4', 'B-5'];
-    }
-    if (anoNorm.includes('4')) {
-      return ['A-1', 'A-2', 'B-1', 'B-4', 'C-1', 'C-2'];
-    }
-    return ['A-1', 'B-1', 'B-4', 'B-5', 'C-1', 'C-2'];
-  };
+  const currentFichasConfig = CONFIG_FICHAS_POR_ANO[anoFilter] || CONFIG_FICHAS_POR_ANO['1ro'];
 
-  const fichasHeaders = getFichasHeaders(anoFilter);
+  // AGRUPAR POR ESPECIALIDAD CUANDO SE SELECCIONA "TODAS"
+  const groupedByEspecialidad = reportData.reduce((acc, current) => {
+    const esp = current.especialidad || 'General';
+    if (!acc[esp]) acc[esp] = [];
+    acc[esp].push(current);
+    return acc;
+  }, {});
 
-  // 4. DESCARGA DIRECTA DE EXCEL (.xlsx)
+  // EXPORTAR A EXCEL (.xlsx)
   const handleExportExcel = () => {
     if (reportData.length === 0) return;
 
@@ -215,22 +264,24 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
         'Docente Acompañante': row.docenteAcompanante
       }));
     } else if (tipo === 'etapa') {
-      excelData = reportData.map(row => ({
-        'Estudiante': row.estudiante,
-        'C.I.': row.ci,
-        [fichasHeaders[0]]: row.f1,
-        [fichasHeaders[1]]: row.f2,
-        [fichasHeaders[2]]: row.f3,
-        [fichasHeaders[3]]: row.f4,
-        [fichasHeaders[4]]: row.f5,
-        [fichasHeaders[5]]: row.f6,
-        'Promedio Final': row.promedio
-      }));
+      excelData = reportData.map(row => {
+        const item = {
+          'Especialidad': row.especialidad,
+          'Estudiante': row.estudiante,
+          'C.I.': row.ci
+        };
+        currentFichasConfig.forEach(f => {
+          item[f.label] = row[f.key] || 0;
+        });
+        item['Promedio Final'] = row.promedio;
+        return item;
+      });
     } else if (tipo === 'gestion') {
       excelData = reportData.map(row => ({
         'Código': row.codigoEstudiante,
         'Estudiante': row.estudiante,
         'C.I.': row.ci,
+        'Especialidad': row.especialidad,
         'Teléfono': row.telefono,
         'Correo Institucional': row.correo,
         'Año Formación': row.anoFormacion,
@@ -246,22 +297,21 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
     XLSX.writeFile(workbook, fileName);
   };
 
-  // 5. DESCARGA DIRECTA DE PDF CON MARCA DE AGUA (autoTable)
+  // EXPORTAR A PDF CON SECCIONES SEPARADAS POR ESPECIALIDAD
   const handleExportPDF = () => {
     if (reportData.length === 0) return;
 
     const doc = new jsPDF({
-      orientation: 'portrait',
+      orientation: anoFilter === '4to' || anoFilter === '5to' ? 'landscape' : 'portrait',
       unit: 'mm',
       format: 'letter'
     });
 
     const totalPagesExp = '{total_pages_count_string}';
 
-    // ENCABEZADO INSTITUCIONAL
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(128, 27, 40); // #801B28
+    doc.setTextColor(128, 27, 40);
     doc.text('ESFM "THEA" - IEPC-PEC', 14, 15);
 
     doc.setFontSize(9);
@@ -270,133 +320,78 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
     doc.text(`Escuela Superior de Formación de Maestros - ${titulo}`, 14, 20);
 
     doc.setFontSize(8);
-    doc.text(`Fecha Emisión: ${new Date().toLocaleDateString('es-BO')}`, 195, 15, { align: 'right' });
-    doc.text(`Gestión: ${gestionFilter}`, 195, 20, { align: 'right' });
+    doc.text(`Fecha Emisión: ${new Date().toLocaleDateString('es-BO')}`, doc.internal.pageSize.width - 14, 15, { align: 'right' });
+    doc.text(`Gestión: ${gestionFilter}`, doc.internal.pageSize.width - 14, 20, { align: 'right' });
 
     doc.setDrawColor(128, 27, 40);
     doc.setLineWidth(0.5);
-    doc.line(14, 23, 198, 23);
+    doc.line(14, 23, doc.internal.pageSize.width - 14, 23);
 
-    // FILTROS INFORMACIÓN
-    doc.setFillColor(248, 250, 252);
-    doc.rect(14, 26, 184, 8, 'F');
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    
-    const especTexto = especialidadFilter ? especialidadFilter : 'Todas las Especialidades';
-    doc.text(`Especialidad: ${especTexto}   |   Año: ${anoFilter}   |   Total Registros: ${reportData.length}`, 18, 31);
+    let startY = 28;
 
-    // PREPARACIÓN DE COLUMNAS Y FILAS
-    let columns = [];
-    let rows = [];
+    Object.keys(groupedByEspecialidad).forEach((espec, index) => {
+      const listEst = groupedByEspecialidad[espec];
 
-    if (tipo === 'especialidad') {
-      columns = ['Código', 'Estudiante', 'C.I.', 'Especialidad', 'Nota', 'Docente Acompañante'];
-      rows = reportData.map(r => [
-        r.codigoEstudiante,
-        r.estudiante,
-        r.ci,
-        r.especialidad,
-        `${r.nota} pts`,
-        r.docenteAcompanante
-      ]);
-    } else if (tipo === 'etapa') {
-      columns = ['Estudiante', 'C.I.', ...fichasHeaders, 'Promedio'];
-      rows = reportData.map(r => [
-        r.estudiante,
-        r.ci,
-        r.f1,
-        r.f2,
-        r.f3,
-        r.f4,
-        r.f5,
-        r.f6,
-        `${r.promedio} pts`
-      ]);
-    } else if (tipo === 'gestion') {
-      columns = ['Código', 'Estudiante', 'C.I.', 'Teléfono', 'Correo Institucional', 'Año', 'Estado'];
-      rows = reportData.map(r => [
-        r.codigoEstudiante,
-        r.estudiante,
-        r.ci,
-        r.telefono,
-        r.correo,
-        r.anoFormacion,
-        r.estadoMatricula
-      ]);
-    }
-
-    // GENERACIÓN DE TABLA USANDO EL MÉTODONATIVO autoTable(doc, ...)
-    autoTable(doc, {
-      head: [columns],
-      body: rows,
-      startY: 38,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [128, 27, 40],
-        textColor: [255, 255, 255],
-        fontSize: 7.5,
-        fontStyle: 'bold',
-        halign: 'left'
-      },
-      bodyStyles: {
-        fontSize: 7.5,
-        textColor: [30, 41, 59]
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252]
-      },
-      didDrawPage: (data) => {
-        // MARCA DE AGUA DIAGONAL
-        doc.saveGraphicsState();
-        doc.setGState(new doc.GState({ opacity: 0.05 }));
-        doc.setFontSize(28);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(128, 27, 40);
-        doc.text(`ESFM THEA - IEPC-PEC ${gestionFilter}`, 105, 140, {
-          align: 'center',
-          angle: 35
-        });
-        doc.restoreGraphicsState();
-
-        // PIE DE PÁGINA
-        const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100, 116, 139);
-        doc.text('Documento Oficial generado por la Plataforma IEPC-PEC ESFM THEA', 14, pageHeight - 10);
-        
-        let str = `Página ${doc.internal.getNumberOfPages()}`;
-        if (typeof doc.putTotalPages === 'function') {
-          str = `${str} de ${totalPagesExp}`;
-        }
-        doc.text(str, 198, pageHeight - 10, { align: 'right' });
+      if (index > 0 && startY > doc.internal.pageSize.height - 40) {
+        doc.addPage();
+        startY = 20;
       }
-    });
 
-    // SECCIÓN DE FIRMAS AL FINAL
-    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 25 : 200;
-    const pageHeight = doc.internal.pageSize.height;
-
-    if (finalY < pageHeight - 40) {
-      doc.setLineWidth(0.3);
-      doc.setDrawColor(51, 65, 85);
-      
-      doc.line(30, finalY, 85, finalY);
-      doc.setFontSize(7.5);
+      doc.setFillColor(241, 245, 249);
+      doc.rect(14, startY, doc.internal.pageSize.width - 28, 7, 'F');
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text('Docente Acompañante IEPC-PEC', 57.5, finalY + 4, { align: 'center' });
+      doc.setTextColor(15, 23, 42);
+      doc.text(`ESPECIALIDAD: ${espec.toUpperCase()} (${listEst.length} Estudiantes)`, 18, startY + 5);
 
-      doc.line(125, finalY, 180, finalY);
-      doc.text('Dirección Académica ESFM THEA', 152.5, finalY + 4, { align: 'center' });
-    }
+      startY += 10;
+
+      let columns = [];
+      let rows = [];
+
+      if (tipo === 'especialidad') {
+        columns = ['Código', 'Estudiante', 'C.I.', 'Nota', 'Docente Acompañante'];
+        rows = listEst.map(r => [r.codigoEstudiante, r.estudiante, r.ci, `${r.nota} pts`, r.docenteAcompanante]);
+      } else if (tipo === 'etapa') {
+        columns = ['Estudiante', 'C.I.', ...currentFichasConfig.map(f => f.label), 'Promedio'];
+        rows = listEst.map(r => [
+          r.estudiante,
+          r.ci,
+          ...currentFichasConfig.map(f => r[f.key] || 0),
+          `${r.promedio} pts`
+        ]);
+      } else if (tipo === 'gestion') {
+        columns = ['Código', 'Estudiante', 'C.I.', 'Teléfono', 'Correo', 'Estado'];
+        rows = listEst.map(r => [r.codigoEstudiante, r.estudiante, r.ci, r.telefono, r.correo, r.estadoMatricula]);
+      }
+
+      autoTable(doc, {
+        head: [columns],
+        body: rows,
+        startY: startY,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [128, 27, 40],
+          textColor: [255, 255, 255],
+          fontSize: 7,
+          fontStyle: 'bold'
+        },
+        bodyStyles: {
+          fontSize: 7,
+          textColor: [30, 41, 59]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        }
+      });
+
+      startY = doc.lastAutoTable.finalY + 10;
+    });
 
     if (typeof doc.putTotalPages === 'function') {
       doc.putTotalPages(totalPagesExp);
     }
 
-    // DESCARGA DIRECTA
     doc.save(`Reporte_${tipo}_${gestionFilter}_${anoFilter}.pdf`);
   };
 
@@ -437,7 +432,7 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
         </div>
       </div>
 
-      {/* FILTROS DE SELECCIÓN DINÁMICOS */}
+      {/* FILTROS DINÁMICOS */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div>
           <label className="block text-[10px] font-extrabold uppercase text-slate-400 mb-1">Gestión:</label>
@@ -477,16 +472,15 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
             onChange={(e) => setAnoFilter(e.target.value)}
             className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none bg-white cursor-pointer"
           >
-            <option value="1ro">1er año</option>
-            <option value="2do">2do año</option>
-            <option value="3ro">3er año</option>
-            <option value="4to">4to año</option>
-            <option value="5to">5to año</option>
+            <option value="1ro">1er año (5 Fichas: F1 a F5)</option>
+            <option value="2do">2do año (6 Fichas: F1 a F6)</option>
+            <option value="3ro">3er año (6 Fichas: A1, B1 a B5)</option>
+            <option value="4to">4to año (11 Fichas: A, B, C)</option>
+            <option value="5to">5to año (9 Fichas: A, B, C)</option>
           </select>
         </div>
       </div>
 
-      {/* ESTADO DE ERROR */}
       {errorMessage && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
           <AlertCircle size={18} />
@@ -494,112 +488,128 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
         </div>
       )}
 
-      {/* TABLA DE RESULTADOS O INDICADOR DE CARGA */}
-      <div className="rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+      {/* RENDERIZADO DE TABLAS POR ESPECIALIDAD */}
+      <div className="space-y-6">
         {loading ? (
-          <div className="p-12 text-center text-slate-500 font-bold text-xs">
+          <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-slate-500 font-bold text-xs">
             <Loader2 className="animate-spin inline-block mr-2 text-[#801B28]" size={22} />
-            Consultando registros y centralizadores desde la base de datos...
+            Cargando expedientes de estudiantes...
           </div>
         ) : reportData.length > 0 ? (
-          <div ref={reportRef} className="overflow-x-auto">
-            
-            {/* 1. VISTA DE TABLA: POR ESPECIALIDAD */}
-            {tipo === 'especialidad' && (
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3.5 px-4">Código estudiante</th>
-                    <th className="py-3.5 px-4">Estudiante</th>
-                    <th className="py-3.5 px-4">C.I.</th>
-                    <th className="py-3.5 px-4">Especialidad</th>
-                    <th className="py-3.5 px-4 font-mono text-center">Nota Final</th>
-                    <th className="py-3.5 px-4">Docente Acompañante</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {reportData.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-[#801B28]">{row.codigoEstudiante}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{row.estudiante}</td>
-                      <td className="py-3.5 px-4 font-mono">{row.ci}</td>
-                      <td className="py-3.5 px-4">{row.especialidad}</td>
-                      <td className="py-3.5 px-4 font-mono font-black text-emerald-700 text-center text-sm">{row.nota} pts</td>
-                      <td className="py-3.5 px-4 font-medium">{row.docenteAcompanante}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+          Object.keys(groupedByEspecialidad).map((especialidadNombre) => (
+            <div key={especialidadNombre} className="rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              
+              {/* ENCABEZADO DE ESPECIALIDAD */}
+              <div className="bg-slate-100/80 px-6 py-3.5 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <GraduationCap size={18} className="text-[#801B28]" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    {especialidadNombre}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-extrabold bg-white px-3 py-1 rounded-full text-slate-600 border border-slate-200">
+                  {groupedByEspecialidad[especialidadNombre].length} Estudiantes
+                </span>
+              </div>
 
-            {/* 2. VISTA DE TABLA: POR ETAPA */}
-            {tipo === 'etapa' && (
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3.5 px-4">Estudiante</th>
-                    <th className="py-3.5 px-4 font-mono">C.I.</th>
-                    {fichasHeaders.map((fHeader) => (
-                      <th key={fHeader} className="py-3.5 px-4 font-mono text-center">{fHeader}</th>
-                    ))}
-                    <th className="py-3.5 px-4 font-mono text-emerald-800 text-right">Promedio</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {reportData.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{row.estudiante}</td>
-                      <td className="py-3.5 px-4 font-mono text-slate-500">{row.ci}</td>
-                      <td className="py-3.5 px-4 font-mono text-center">{row.f1}</td>
-                      <td className="py-3.5 px-4 font-mono text-center">{row.f2}</td>
-                      <td className="py-3.5 px-4 font-mono text-center">{row.f3}</td>
-                      <td className="py-3.5 px-4 font-mono text-center">{row.f4}</td>
-                      <td className="py-3.5 px-4 font-mono text-center">{row.f5}</td>
-                      <td className="py-3.5 px-4 font-mono text-center">{row.f6}</td>
-                      <td className="py-3.5 px-4 font-mono font-black text-emerald-700 text-right">{row.promedio} pts</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+              <div className="overflow-x-auto">
+                {/* 1. VISTA ETAPAS / FICHAS DINÁMICAS */}
+                {tipo === 'etapa' && (
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3.5 px-4">Estudiante</th>
+                        <th className="py-3.5 px-4 font-mono">C.I.</th>
+                        {currentFichasConfig.map((fHeader) => (
+                          <th key={fHeader.key} className="py-3.5 px-4 font-mono text-center">
+                            {fHeader.label}
+                          </th>
+                        ))}
+                        <th className="py-3.5 px-4 font-mono text-emerald-800 text-right">Promedio</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {groupedByEspecialidad[especialidadNombre].map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-900">{row.estudiante}</td>
+                          <td className="py-3.5 px-4 font-mono text-slate-500">{row.ci}</td>
+                          {currentFichasConfig.map((fHeader) => (
+                            <td key={fHeader.key} className="py-3.5 px-4 font-mono text-center">
+                              {row[fHeader.key] || 0}
+                            </td>
+                          ))}
+                          <td className="py-3.5 px-4 font-mono font-black text-emerald-700 text-right">
+                            {row.promedio} pts
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
 
-            {/* 3. VISTA DE TABLA: POR GESTIÓN */}
-            {tipo === 'gestion' && (
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3.5 px-4">Código</th>
-                    <th className="py-3.5 px-4">Estudiante</th>
-                    <th className="py-3.5 px-4">C.I.</th>
-                    <th className="py-3.5 px-4">Teléfono</th>
-                    <th className="py-3.5 px-4">Correo Institucional</th>
-                    <th className="py-3.5 px-4">Año</th>
-                    <th className="py-3.5 px-4">Estado Matrícula</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {reportData.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-[#801B28]">{row.codigoEstudiante}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{row.estudiante}</td>
-                      <td className="py-3.5 px-4 font-mono">{row.ci}</td>
-                      <td className="py-3.5 px-4 font-mono">{row.telefono}</td>
-                      <td className="py-3.5 px-4 text-slate-500 font-mono">{row.correo}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-800">{row.anoFormacion}</td>
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          {row.estadoMatricula}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                {/* 2. VISTA ESPECIALIDAD */}
+                {tipo === 'especialidad' && (
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3.5 px-4">Código</th>
+                        <th className="py-3.5 px-4">Estudiante</th>
+                        <th className="py-3.5 px-4">C.I.</th>
+                        <th className="py-3.5 px-4 font-mono text-center">Nota Final</th>
+                        <th className="py-3.5 px-4">Docente Acompañante</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {groupedByEspecialidad[especialidadNombre].map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-mono font-bold text-[#801B28]">{row.codigoEstudiante}</td>
+                          <td className="py-3.5 px-4 font-bold text-slate-900">{row.estudiante}</td>
+                          <td className="py-3.5 px-4 font-mono">{row.ci}</td>
+                          <td className="py-3.5 px-4 font-mono font-black text-emerald-700 text-center text-sm">{row.nota} pts</td>
+                          <td className="py-3.5 px-4 font-medium">{row.docenteAcompanante}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
 
-          </div>
+                {/* 3. VISTA GESTIÓN */}
+                {tipo === 'gestion' && (
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3.5 px-4">Código</th>
+                        <th className="py-3.5 px-4">Estudiante</th>
+                        <th className="py-3.5 px-4">C.I.</th>
+                        <th className="py-3.5 px-4">Teléfono</th>
+                        <th className="py-3.5 px-4">Correo Institucional</th>
+                        <th className="py-3.5 px-4">Estado Matrícula</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {groupedByEspecialidad[especialidadNombre].map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-mono font-bold text-[#801B28]">{row.codigoEstudiante}</td>
+                          <td className="py-3.5 px-4 font-bold text-slate-900">{row.estudiante}</td>
+                          <td className="py-3.5 px-4 font-mono">{row.ci}</td>
+                          <td className="py-3.5 px-4 font-mono">{row.telefono}</td>
+                          <td className="py-3.5 px-4 text-slate-500 font-mono">{row.correo}</td>
+                          <td className="py-3.5 px-4">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              {row.estadoMatricula}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+              </div>
+            </div>
+          ))
         ) : (
-          <div className="p-12 text-center text-slate-400 font-medium text-xs">
+          <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-slate-400 font-medium text-xs">
             No se encontraron registros de estudiantes para los filtros seleccionados ({gestionFilter} - {anoFilter}).
           </div>
         )}

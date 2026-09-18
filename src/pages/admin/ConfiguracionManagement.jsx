@@ -3,7 +3,6 @@ import {
   Settings, 
   User, 
   Lock, 
-  Mail, 
   Phone, 
   ShieldCheck, 
   CheckCircle2, 
@@ -37,23 +36,56 @@ export const ConfiguracionManagement = () => {
   const [loadingSecurity, setLoadingSecurity] = useState(false);
   const [message, setMessage] = useState(null);
 
-  // Cargar usuario autenticado desde localStorage al iniciar
+  // Cargar usuario autenticado desde localStorage y rehidratar desde el servidor al iniciar
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
+    const fetchFreshUserData = async () => {
+      const savedUserStr = localStorage.getItem("user");
+      let currentUserData = savedUserStr ? JSON.parse(savedUserStr) : null;
+
+      if (!currentUserData) return;
+
+      // 1. Carga inicial síncrona desde localStorage con soporte para distintas nomenclaturas
+      const initialTelefono = currentUserData.telefono || currentUserData.phone || currentUserData.celular || '';
+      
+      setProfileData({
+        nombre: currentUserData.nombre || '',
+        apellido: currentUserData.apellido || '',
+        username: currentUserData.username || '',
+        correo: currentUserData.correo || currentUserData.email || '',
+        telefono: initialTelefono
+      });
+
+      // 2. Consulta fresca a la base de datos para recuperar teléfono persistido
       try {
-        const parsed = JSON.parse(savedUser);
-        setProfileData({
-          nombre: parsed.nombre || '',
-          apellido: parsed.apellido || '',
-          username: parsed.username || '',
-          correo: parsed.correo || parsed.email || '',
-          telefono: parsed.telefono || ''
-        });
+        const allUsers = await userService.getUsers();
+        const list = Array.isArray(allUsers) ? allUsers : allUsers?.usuarios || [];
+        const freshUser = list.find(u => u.id === currentUserData.id || u.username === currentUserData.username);
+
+        if (freshUser) {
+          const freshTelefono = freshUser.telefono || freshUser.phone || freshUser.celular || initialTelefono;
+          
+          setProfileData(prev => ({
+            ...prev,
+            nombre: freshUser.nombre || prev.nombre,
+            apellido: freshUser.apellido || prev.apellido,
+            username: freshUser.username || prev.username,
+            telefono: freshTelefono
+          }));
+
+          // Sincronizar en localStorage
+          const updatedUser = {
+            ...currentUserData,
+            ...freshUser,
+            telefono: freshTelefono
+          };
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+        }
       } catch (e) {
-        console.error("Error al cargar perfil desde localStorage", e);
+        console.warn("No se pudo refrescar los datos remotos del usuario en configuración.");
       }
-    }
+    };
+
+    fetchFreshUserData();
   }, []);
 
   // Actualizar Mi Cuenta (Nombre, Apellido, Username y Teléfono)
@@ -73,7 +105,7 @@ export const ConfiguracionManagement = () => {
       // Usa la ruta /usuarios/me/perfil que lee el ID del Token JWT
       const response = await userService.updateProfile(payload);
 
-      // Actualizar localStorage manteniendo el correo previo e integrando los datos actualizados
+      // Actualizar localStorage resguardando el teléfono en múltiples alias
       const currentUserLocal = JSON.parse(localStorage.getItem("user") || "{}");
       const updatedUser = {
         ...currentUserLocal,
@@ -81,6 +113,7 @@ export const ConfiguracionManagement = () => {
         apellido: profileData.apellido,
         username: profileData.username,
         telefono: profileData.telefono,
+        phone: profileData.telefono,
         ...(response?.user || {})
       };
       
@@ -220,8 +253,6 @@ export const ConfiguracionManagement = () => {
               </div>
             </div>
 
-            
-
             <div>
               <label className="block font-extrabold text-slate-700 mb-1">Teléfono / Celular</label>
               <div className="relative">
@@ -270,7 +301,7 @@ export const ConfiguracionManagement = () => {
               <div className="relative">
                 <KeyRound className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="text"
+                  type="password"
                   required
                   placeholder="••••••••"
                   value={securityData.currentPassword}
@@ -285,7 +316,7 @@ export const ConfiguracionManagement = () => {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="text"
+                  type="password"
                   required
                   placeholder="••••••••"
                   value={securityData.newPassword}
@@ -300,7 +331,7 @@ export const ConfiguracionManagement = () => {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="text"
+                  type="password"
                   required
                   placeholder="••••••••"
                   value={securityData.confirmPassword}

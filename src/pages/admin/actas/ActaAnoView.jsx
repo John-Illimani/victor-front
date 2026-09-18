@@ -2,31 +2,35 @@ import React, { useState, useEffect } from "react";
 import {
   FileText,
   Search,
-  Eye,
-  Edit3,
-  History,
-  ShieldCheck,
   Printer,
-  CheckCircle2,
   X,
   Sparkles,
   Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  Info
 } from "lucide-react";
 import { actaService } from "../../../services/actaService";
+import { imprimirActaConformacion1erAno } from "../../../utils/fichas/1año/actaPdfGenerator";
 
 export const ActaAnoView = ({ gestion, ano }) => {
   const [actas, setActas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
   // Modales
   const [selectedActa, setSelectedActa] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [showHistorialModal, setShowHistorialModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [historialList, setHistorialList] = useState([]);
 
-  // DICCIONARIOS DE FICHAS Y ACTAS SEGÚN EL AÑO DE FORMACIÓN
+  // Modal de Notificaciones UI (Reemplazo de Alerts)
+  const [systemModal, setSystemModal] = useState({
+    show: false,
+    title: "",
+    message: "",
+    type: "info" // "error" | "success" | "info"
+  });
+
   const getFichasByAno = (anoFormacion) => {
     const a = (anoFormacion || ano || "").toString().toUpperCase();
 
@@ -90,7 +94,6 @@ export const ActaAnoView = ({ gestion, ano }) => {
       ];
     }
 
-    // POR DEFECTO 5TO AÑO
     return [
       { codigo: "5_A1", nombre: "Ficha A-1: Planificación y Elaboración de PDC" },
       { codigo: "5_B1", nombre: "Ficha B-1: Control de Asistencia PEC (10 Semanas)" },
@@ -132,44 +135,41 @@ export const ActaAnoView = ({ gestion, ano }) => {
     );
   });
 
-  // BOTÓN 3: HISTORIAL
-  const handleOpenHistorial = async (acta) => {
-    setSelectedActa(acta);
-    setShowHistorialModal(true);
-    try {
-      const history = await actaService.getHistorialActa(acta.estudiante_id);
-      setHistorialList(history);
-    } catch (err) {
-      setHistorialList([]);
-    }
-  };
-
-  // BOTÓN 4: VERIFICAR INTEGRIDAD
-  const handleVerifyIntegrity = (acta) => {
-    alert(
-      `SISTEMA DE VERIFICACIÓN DE INTEGRIDAD BLOCKCHAIN\n\n` +
-        `Código estudiante: ${acta.codigo_estudiante}\n` +
-        `Estudiante: ${acta.nombre} ${acta.apellido}\n\n` +
-        `Hash PostgreSQL: ${acta.hash_blockchain}\n` +
-        `Hash Blockchain: ${acta.hash_blockchain}\n\n` +
-        `Estado: ✓ INTEGRIDAD VERIFICADA EXITOSAMENTE`
-    );
-  };
-
-  // BOTÓN 5: ABRIR MODAL IMPRIMIR
   const handleOpenPrintModal = (acta) => {
     setSelectedActa(acta);
     setShowPrintModal(true);
   };
 
-  // IMPRIMIR CUALQUIER FICHA SELECCIONADA
-  const handleImprimirFichaEspecifica = (ficha) => {
-    window.print();
+  // IMPRESIÓN DINÁMICA DE PLANTILLAS PDF MEDIANTE MODALES
+  const handleImprimirFichaEspecifica = async (ficha) => {
+    if (!selectedActa) return;
+
+    if (ficha.codigo === "1_ACTA_EQUIPO") {
+      setGeneratingPdf(true);
+      const res = await imprimirActaConformacion1erAno(selectedActa.estudiante_id);
+      setGeneratingPdf(false);
+
+      if (!res.success) {
+        setSystemModal({
+          show: true,
+          title: "Información del Sistema",
+          message: res.message,
+          type: "error"
+        });
+      }
+    } else {
+      setSystemModal({
+        show: true,
+        title: "Plantilla en Desarrollo",
+        message: `La plantilla oficial en PDF para "${ficha.nombre}" está siendo configurada en el servidor.`,
+        type: "info"
+      });
+    }
   };
 
   return (
     <div className="space-y-6 font-sans">
-      {/* BANNER CABECERA */}
+      {/* BANNER ENCABEZADO */}
       <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-[#121824] via-[#1A1A1A] to-[#801B28] p-6 sm:p-8 text-white shadow-2xl border border-white/10">
         <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
@@ -181,13 +181,13 @@ export const ActaAnoView = ({ gestion, ano }) => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Consola de administración de actas oficiales para {ano}º año de formación de la Gestión {gestion}.
+              Consola de administración e impresión de fichas oficiales para {ano}º año.
             </p>
           </div>
         </div>
       </div>
 
-      {/* FILTRO BUSCADOR */}
+      {/* BUSCADOR */}
       <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm max-w-md">
         <div className="relative">
           <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
@@ -201,7 +201,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
         </div>
       </div>
 
-      {/* TABLA PRINCIPAL DE ACTAS */}
+      {/* TABLA DE ACTAS */}
       <div className="rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -211,16 +211,15 @@ export const ActaAnoView = ({ gestion, ano }) => {
                 <th className="py-3.5 px-4">Estudiante / C.I.</th>
                 <th className="py-3.5 px-4">Especialidad</th>
                 <th className="py-3.5 px-4">Docente Acompañante</th>
-                
                 <th className="py-3.5 px-4 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="py-8 text-center text-slate-500 font-bold">
+                  <td colSpan="5" className="py-8 text-center text-slate-500 font-bold">
                     <Loader2 className="animate-spin inline-block mr-2 text-[#801B28]" size={20} />
-                    Cargando actas oficiales de la gestión {gestion}...
+                    Cargando estudiantes de la gestión {gestion}...
                   </td>
                 </tr>
               ) : filteredActas.length > 0 ? (
@@ -239,26 +238,20 @@ export const ActaAnoView = ({ gestion, ano }) => {
                     <td className="py-3.5 px-4 font-medium text-slate-800">
                       {acta.da_nombre ? `${acta.da_nombre} ${acta.da_apellido}` : "Sin Asignar"}
                     </td>
-                   
-                    {/* BOTONES DE ACCIÓN */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center justify-center gap-1.5">
-         
-                        {/* 5. IMPRIMIR */}
-                        <button
-                          onClick={() => handleOpenPrintModal(acta)}
-                          title="Imprimir Fichas"
-                          className="rounded-xl bg-slate-100 p-2 text-slate-600 hover:bg-slate-900 hover:text-white transition-all cursor-pointer"
-                        >
-                          <Printer size={15} />
-                        </button>
-                      </div>
+                    <td className="py-3.5 px-4 text-center">
+                      <button
+                        onClick={() => handleOpenPrintModal(acta)}
+                        title="Imprimir Fichas"
+                        className="rounded-xl bg-slate-100 p-2 text-slate-600 hover:bg-slate-900 hover:text-white transition-all cursor-pointer"
+                      >
+                        <Printer size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="6" className="py-8 text-center text-slate-400 font-medium">
+                  <td colSpan="5" className="py-8 text-center text-slate-400 font-medium">
                     No existen actas registradas para la Gestión {gestion} ({ano}º Año).
                   </td>
                 </tr>
@@ -268,91 +261,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
         </div>
       </div>
 
-      {/* MODAL 1: VER DETALLE */}
-      {showDetailModal && selectedActa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-slate-100">
-            <button
-              onClick={() => setShowDetailModal(false)}
-              className="absolute right-4 top-4 rounded-full p-2 text-slate-400 hover:bg-slate-100 cursor-pointer"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="border-b border-slate-200 pb-4 mb-6">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#801B28]">
-                IEPC-PEC – {selectedActa.ano_formacion || `${ano}º Año`} – GESTIÓN {gestion}
-              </span>
-              <h2 className="text-xl font-black text-slate-900 mt-1">Datos del Estudiante</h2>
-              <p className="text-xs text-slate-600 font-bold">
-                {selectedActa.nombre} {selectedActa.apellido} ({selectedActa.codigo_estudiante})
-              </p>
-            </div>
-
-            <div className="space-y-3 text-xs font-medium">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 font-bold">
-                <span>Acta de Inicio e Inscripción Oficial</span>
-                <CheckCircle2 size={16} className="text-emerald-600" />
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 font-bold">
-                <span>Acta de Conformación de Equipo Comunitario</span>
-                <CheckCircle2 size={16} className="text-emerald-600" />
-              </div>
-            </div>
-
-            <div className="mt-8 flex justify-end">
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white hover:bg-slate-800 cursor-pointer"
-              >
-                Cerrar Ventana
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: HISTORIAL */}
-      {showHistorialModal && selectedActa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100">
-            <button
-              onClick={() => setShowHistorialModal(false)}
-              className="absolute right-4 top-4 rounded-full p-2 text-slate-400 hover:bg-slate-100 cursor-pointer"
-            >
-              <X size={20} />
-            </button>
-
-            <h3 className="text-lg font-black text-slate-900 mb-1">Historial del Acta</h3>
-            <p className="text-xs text-slate-500 mb-4">{selectedActa.nombre} {selectedActa.apellido}</p>
-
-            <div className="space-y-2 text-xs max-h-60 overflow-y-auto">
-              {historialList.length > 0 ? (
-                historialList.map((h, index) => (
-                  <div key={index} className="p-3 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
-                    <div className="flex justify-between font-bold text-slate-800">
-                      <span>{h.accion}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(h.fecha).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-[11px]">{h.detalles}</p>
-                    <span className="text-[10px] text-emerald-700 font-bold block">
-                      Por: {h.usuario}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="p-6 text-center text-slate-400 font-medium">
-                  Sin eventos registrados en el historial.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 3: IMPRIMIR FICHAS DEL ESTUDIANTE */}
+      {/* MODAL 1: SELECCIÓN DE FICHAS Y IMPRESIÓN */}
       {showPrintModal && selectedActa && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -372,50 +281,37 @@ export const ActaAnoView = ({ gestion, ano }) => {
               </h2>
             </div>
 
-            {/* CARD DE INFORMACIÓN PERSONAL Y ACADÉMICA */}
             <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-5">
               <div>
-                <span className="font-bold text-slate-400 block">Nombre:</span>{" "}
+                <span className="font-bold text-slate-400 block">Nombre:</span>
                 <span className="font-extrabold text-slate-900 block">
                   {selectedActa.nombre} {selectedActa.apellido}
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">C.I.:</span>{" "}
+                <span className="font-bold text-slate-400 block">C.I.:</span>
                 <span className="font-mono font-extrabold text-slate-900 block">
                   {selectedActa.ci}
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">Código:</span>{" "}
+                <span className="font-bold text-slate-400 block">Código:</span>
                 <span className="font-mono font-extrabold text-[#801B28] block">
                   {selectedActa.codigo_estudiante}
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">Especialidad:</span>{" "}
+                <span className="font-bold text-slate-400 block">Especialidad:</span>
                 <span className="font-bold text-slate-800 block">
                   {selectedActa.especialidad || "Educación Primaria"}
                 </span>
               </div>
-              <div>
-                <span className="font-bold text-slate-400 block">Año:</span>{" "}
-                <span className="font-bold text-slate-800 block">
-                  {selectedActa.ano_formacion || `${ano}º Año`}
-                </span>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 block">Gestión:</span>{" "}
-                <span className="font-bold text-slate-800 block">{gestion}</span>
-              </div>
             </div>
 
             <h3 className="text-xs font-black text-slate-900 mb-3 uppercase flex items-center gap-2">
-              <FileText className="text-[#801B28]" size={16} /> ACTAS, FICHAS Y CUADROS (
-              {selectedActa.ano_formacion || `${ano}º Año`})
+              <FileText className="text-[#801B28]" size={16} /> ACTAS Y FICHAS DISPONIBLES
             </h3>
 
-            {/* LISTA DE FICHAS CON OPCIÓN ÚNICA DE IMPRIMIR */}
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white">
               {getFichasByAno(selectedActa.ano_formacion || ano).map((ficha) => (
                 <div
@@ -424,10 +320,12 @@ export const ActaAnoView = ({ gestion, ano }) => {
                 >
                   <span className="font-bold text-slate-800 pr-2">{ficha.nombre}</span>
                   <button
+                    disabled={generatingPdf}
                     onClick={() => handleImprimirFichaEspecifica(ficha)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white font-extrabold hover:bg-slate-800 text-[11px] cursor-pointer transition-all shrink-0 shadow-sm"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white font-extrabold hover:bg-slate-800 text-[11px] cursor-pointer transition-all shrink-0 shadow-sm disabled:opacity-50"
                   >
-                    <Printer size={13} /> Imprimir
+                    {generatingPdf ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+                    Imprimir
                   </button>
                 </div>
               ))}
@@ -436,11 +334,39 @@ export const ActaAnoView = ({ gestion, ano }) => {
             <div className="mt-6 flex justify-end">
               <button
                 onClick={() => setShowPrintModal(false)}
-                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 cursor-pointer transition-all"
+                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 cursor-pointer"
               >
                 Cerrar Ventana
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: NOTIFICACIONES DEL SISTEMA (ALERTAS) */}
+      {systemModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 text-center space-y-4">
+            
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100">
+              {systemModal.type === 'error' && <AlertTriangle size={28} className="text-rose-600" />}
+              {systemModal.type === 'success' && <CheckCircle2 size={28} className="text-emerald-600" />}
+              {systemModal.type === 'info' && <Info size={28} className="text-[#801B28]" />}
+            </div>
+
+            <div>
+              <h3 className="text-base font-black text-slate-900">{systemModal.title}</h3>
+              <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                {systemModal.message}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setSystemModal({ ...systemModal, show: false })}
+              className="w-full rounded-2xl bg-slate-900 py-2.5 text-xs font-extrabold text-white hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              Entendido
+            </button>
           </div>
         </div>
       )}

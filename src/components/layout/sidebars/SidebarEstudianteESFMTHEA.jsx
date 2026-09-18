@@ -41,11 +41,7 @@ const MENU_ITEMS_ESTUDIANTE = [
       { name: "Certificado", link: "/estudiante/documentos/certificado" }
     ]
   },
-  { 
-    name: "Verificar integridad", 
-    link: "/estudiante/verificar-integridad", 
-    icon: ShieldCheck 
-  },
+  
   { 
     name: "Mi cuenta", 
     link: "/estudiante/cuenta", 

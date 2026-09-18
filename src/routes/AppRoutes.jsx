@@ -20,18 +20,7 @@ import { EspecialidadesManagement } from "../pages/admin/EspecialidadesManagemen
 import { RevisionValidacionManagement } from "../pages/admin/RevisionValidacionManagement";
 import { BlockchainIntegrityManagement } from "../pages/admin/BlockchainIntegrityManagement";
 import { ConfiguracionManagement } from "../pages/admin/ConfiguracionManagement";
-import {
-  Actas2025Ano1,
-  Actas2025Ano2,
-  Actas2025Ano3,
-  Actas2025Ano4,
-  Actas2025Ano5,
-  Actas2026Ano1,
-  Actas2026Ano2,
-  Actas2026Ano3,
-  Actas2026Ano4,
-  Actas2026Ano5,
-} from "../pages/admin/actas/ActasPages";
+
 
 // DOCENTE ACOMPAÑANTE
 import { DocenteAcompananteDashboard } from "../pages/docentes/acompañante/DocenteAcompananteDashboard";
@@ -49,7 +38,7 @@ import { DocenteGuiaDashboard } from "../pages/docentes/guia/DocenteGuiaDashboar
 import { MisEstudiantesGuia } from "../pages/docentes/guia/MisEstudiantesGuia";
 import { FichasAsignadasGuia } from "../pages/docentes/guia/FichasAsignadasGuia";
 import { SeguimientoGuia } from "../pages/docentes/guia/SeguimientoGuia";
-import { ConsultasGuia } from "../pages/docentes/guia/ConsultasGuia";
+
 import { MiCuentaGuia } from "../pages/docentes/guia/MiCuentaGuia";
 
 // ESTUDIANTE
@@ -65,6 +54,7 @@ import { MiCuentaEstudiante } from "../pages/student/MiCuentaEstudiante";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ActaAnoContainer } from "../pages/admin/actas/ActaAnoContainer";
 import { ReporteEspecialidad, ReporteEtapa, ReporteGestion } from "../pages/admin/reportes/ReportesPages";
+import { ReportesGuia } from "../pages/docentes/guia/ReportesGuia";
 
 function AppRoutes() {
   return (
@@ -154,7 +144,8 @@ function AppRoutes() {
             <Route path="estudiantes" element={<MisEstudiantesGuia />} />
             <Route path="fichas-asignadas" element={<FichasAsignadasGuia />} />
             <Route path="seguimiento" element={<SeguimientoGuia />} />
-            <Route path="consultas" element={<ConsultasGuia />} />
+            
+            <Route path="reportes" element={<ReportesGuia />} />
             <Route path="cuenta" element={<MiCuentaGuia />} />
           </Route>
         </Route>

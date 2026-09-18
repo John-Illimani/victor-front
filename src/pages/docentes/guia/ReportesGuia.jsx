@@ -8,7 +8,8 @@ import {
   Users, 
   Filter,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  School
 } from 'lucide-react';
 
 // LIBRERÍAS DE GENERACIÓN DIRECTA DE ARCHIVOS
@@ -32,7 +33,7 @@ const normalizarAnoStr = (cadena) => {
   return cadena;
 };
 
-export const ReportesAcompanante = () => {
+export const ReportesGuia = () => {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -75,7 +76,7 @@ export const ReportesAcompanante = () => {
         }
 
       } catch (err) {
-        console.error("Error al obtener la nómina para reportes:", err);
+        console.error("Error al obtener la nómina para reportes del docente guía:", err);
         setErrorMessage("Error de conexión al obtener la lista de estudiantes asignados.");
       } finally {
         setLoading(false);
@@ -98,7 +99,7 @@ export const ReportesAcompanante = () => {
     return nombreCompleto.includes(search) || (est.ci && est.ci.includes(search));
   });
 
-  // GENERACIÓN DE ARCHIVO EXCEL (.xlsx) SIN UNIDAD EDUCATIVA
+  // GENERACIÓN DE ARCHIVO EXCEL (.xlsx)
   const handleExportExcel = () => {
     if (estudiantesFiltrados.length === 0) {
       alert("No hay registros para exportar.");
@@ -107,7 +108,7 @@ export const ReportesAcompanante = () => {
 
     const excelData = estudiantesFiltrados.map((est, index) => ({
       'N°': index + 1,
-      'Estudiante': `${est.nombre || ''} ${est.apellido || ''}`.trim(),
+      'Estudiante Practicante': `${est.nombre || ''} ${est.apellido || ''}`.trim(),
       'C.I.': est.ci || 'S/N',
       'Año de Formación': normalizarAnoStr(est.ano_formacion),
       'Especialidad': est.especialidad || 'General',
@@ -117,12 +118,12 @@ export const ReportesAcompanante = () => {
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
     const tagAno = selectedAno === 'TODOS' ? 'Todos_los_Anos' : selectedAno.replace(' ', '_');
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Reporte_${tagAno}`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, `Reporte_Guia_${tagAno}`);
 
-    XLSX.writeFile(workbook, `Reporte_Estudiantes_${tagAno}.xlsx`);
+    XLSX.writeFile(workbook, `Reporte_Practicantes_Guia_${tagAno}.xlsx`);
   };
 
-  // GENERACIÓN DE DOCUMENTO PDF SIN UNIDAD EDUCATIVA
+  // GENERACIÓN DE DOCUMENTO PDF
   const handleExportPDF = () => {
     if (estudiantesFiltrados.length === 0) {
       alert("No hay registros para exportar.");
@@ -137,11 +138,11 @@ export const ReportesAcompanante = () => {
 
     const labelAno = selectedAno === 'TODOS' ? 'Todos los Años de Formación' : selectedAno;
 
-    // TÍTULO OFICIAL EN TAMAÑO ADECUADO
+    // TÍTULO OFICIAL
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(128, 27, 40);
-    doc.text('REPORTE OFICIAL DE ESTUDIANTES ASIGNADOS - IEPC-PEC', 14, 14);
+    doc.text('REPORTE OFICIAL DE PRACTICANTES EN AULA - IEPC-PEC', 14, 14);
 
     // FECHA ALINEADA A LA DERECHA
     doc.setFontSize(8);
@@ -149,9 +150,9 @@ export const ReportesAcompanante = () => {
     doc.setTextColor(100, 116, 139);
     doc.text(`Fecha: ${new Date().toLocaleDateString('es-BO')}`, 198, 14, { align: 'right' });
 
-    // SUBTÍTULO
+    // SUBTÍTULO DOCENTE GUÍA
     doc.setFontSize(8.5);
-    doc.text(`Docente Acompañante — Nómina de Practicantes (${labelAno})`, 14, 19);
+    doc.text(`Docente Guía (Maestro Titular U.E.) — Nómina de Practicantes (${labelAno})`, 14, 19);
 
     // LÍNEA DIVISORIA ENCABEZADO
     doc.setDrawColor(128, 27, 40);
@@ -164,10 +165,10 @@ export const ReportesAcompanante = () => {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(`Filtro Seleccionado: ${labelAno}   |   Total Practicantes: ${estudiantesFiltrados.length}`, 18, 29.5);
+    doc.text(`Filtro Seleccionado: ${labelAno}   |   Total Practicantes Asignados: ${estudiantesFiltrados.length}`, 18, 29.5);
 
     // TABLA DE DATOS
-    const columns = ['N°', 'Estudiante', 'C.I.', 'Año de Formación', 'Especialidad'];
+    const columns = ['N°', 'Estudiante Practicante', 'C.I.', 'Año de Formación', 'Especialidad'];
     const rows = estudiantesFiltrados.map((e, index) => [
       index + 1,
       `${e.nombre || ''} ${e.apellido || ''}`.trim(),
@@ -208,29 +209,29 @@ export const ReportesAcompanante = () => {
       doc.line(70, finalY, 140, finalY);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
-      doc.text('Firma Docente Acompañante / Tutor', 105, finalY + 4, { align: 'center' });
+      doc.text('Firma Docente Guía (Maestro Titular)', 105, finalY + 4, { align: 'center' });
     }
 
     const fileNameTag = selectedAno === 'TODOS' ? 'Todos_los_Anos' : selectedAno.replace(' ', '_');
-    doc.save(`Reporte_Estudiantes_${fileNameTag}.pdf`);
+    doc.save(`Reporte_Practicantes_Guia_${fileNameTag}.pdf`);
   };
 
   return (
     <div className="space-y-6 font-sans">
       
-      {/* BANNER ENCABEZADO */}
+      {/* BANNER ENCABEZADO INSTITUCIONAL */}
       <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-[#121824] via-[#1A1A1A] to-[#801B28] p-6 sm:p-8 text-white shadow-2xl border border-white/10">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-[#F3EFCF] backdrop-blur-md border border-white/15">
-              <FileBarChart2 size={14} className="text-[#8C731A]" /> Módulo de Reportes
+              <School size={14} className="text-[#8C731A]" /> Docente Guía (Maestro Titular U.E.)
             </div>
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white flex items-center gap-3">
-              Reportes de Asignación
+              Reportes de Aula
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Consolidado de estudiantes asignados bajo tutoría pedagógica.
+              Consolidado y reporte de estudiantes practicantes asignados a tu aula para el seguimiento y evaluación.
             </p>
           </div>
 
@@ -260,11 +261,11 @@ export const ReportesAcompanante = () => {
         </div>
       )}
 
-      {/* METRICA: TOTAL ESTUDIANTES */}
+      {/* METRICA: TOTAL ESTUDIANTES PRACTICANTES */}
       <div className="max-w-sm rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-1">
         <div className="flex items-center justify-between">
           <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
-            Total Estudiantes ({selectedAno === 'TODOS' ? 'Todos los Años' : selectedAno})
+            Total Practicantes ({selectedAno === 'TODOS' ? 'Todos los Años' : selectedAno})
           </span>
           <Users size={18} className="text-[#801B28]" />
         </div>
@@ -272,7 +273,7 @@ export const ReportesAcompanante = () => {
           {estudiantesFiltrados.length} Practicantes
         </span>
         <span className="text-[10px] text-[#8C731A] font-bold block pt-1">
-          Nómina activa bajo tutoría
+          Nómina asignada a tu aula
         </span>
       </div>
 
@@ -322,7 +323,7 @@ export const ReportesAcompanante = () => {
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider">
               <tr>
                 <th className="py-3.5 px-4">#</th>
-                <th className="py-3.5 px-4">Estudiante</th>
+                <th className="py-3.5 px-4">Estudiante Practicante</th>
                 <th className="py-3.5 px-4">C.I.</th>
                 <th className="py-3.5 px-4">Año de Formación</th>
                 <th className="py-3.5 px-4">Especialidad</th>
@@ -333,7 +334,7 @@ export const ReportesAcompanante = () => {
                 <tr>
                   <td colSpan="5" className="py-12 text-center text-slate-500 font-bold">
                     <Loader2 className="animate-spin inline mr-2 text-[#801B28]" size={20} />
-                    Cargando reporte de estudiantes...
+                    Cargando reporte de practicantes...
                   </td>
                 </tr>
               ) : estudiantesFiltrados.length > 0 ? (
@@ -357,7 +358,7 @@ export const ReportesAcompanante = () => {
               ) : (
                 <tr>
                   <td colSpan="5" className="py-8 text-center text-slate-400 font-medium">
-                    No se encontraron estudiantes asignados para el filtro seleccionado.
+                    No se encontraron practicantes asignados para el filtro seleccionado.
                   </td>
                 </tr>
               )}

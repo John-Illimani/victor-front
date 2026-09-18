@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, 
-  Mail, 
   Phone, 
   Lock, 
   ShieldCheck, 
@@ -10,73 +9,178 @@ import {
   Sparkles, 
   School, 
   KeyRound,
-  Building
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 
+import { userService } from '../../../services/userService';
+
 export const MiCuentaGuia = () => {
-  const [profile, setProfile] = useState({
-    nombre: 'Roberto',
-    apellido: 'Mendoza Claros',
-    ci: '5920192',
-    cargo: 'Docente Guía (Maestro Titular)',
+  // DATOS GENERALES DEL PERFIL INFORMATIVO
+  const [userInfo, setUserInfo] = useState({
+    item: 'S/I',
+    cargo: 'Docente Guía (Maestro Titular U.E.)',
     unidadEducativa: 'U.E. Franz Tamayo',
     distrito: 'El Alto 1',
-    cursoAsignado: '3.er Año "A" de Primaria',
-    correo: 'roberto.mendoza@minedu.gob.bo',
-    telefono: '71548291'
+    ci: 'S/C'
   });
 
-  const [passwords, setPasswords] = useState({
-    actual: '',
-    nueva: '',
-    confirmacion: ''
+  // FORMULARIO MI CUENTA
+  const [profileData, setProfileData] = useState({
+    nombre: '',
+    apellido: '',
+    username: '',
+    correo: '',
+    telefono: ''
   });
 
+  // FORMULARIO SEGURIDAD
+  const [securityData, setSecurityData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingSecurity, setLoadingSecurity] = useState(false);
   const [message, setMessage] = useState(null);
 
+  // CARGAR Y REHIDRATAR DATOS DESDE LOCALSTORAGE Y BACKEND
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
+    const fetchFreshUserData = async () => {
+      const savedUserStr = localStorage.getItem("user");
+      let currentUserData = savedUserStr ? JSON.parse(savedUserStr) : null;
+
+      if (!currentUserData) return;
+
+      // 1. Carga inicial síncrona desde localStorage (soporta múltiples nomenclaturas)
+      const initialTelefono = currentUserData.telefono || currentUserData.phone || currentUserData.celular || '';
+      
+      setProfileData({
+        nombre: currentUserData.nombre || '',
+        apellido: currentUserData.apellido || '',
+        username: currentUserData.username || '',
+        correo: currentUserData.correo || currentUserData.email || '',
+        telefono: initialTelefono
+      });
+
+      setUserInfo({
+        item: currentUserData.item_docente || currentUserData.codigo || 'S/I',
+        cargo: currentUserData.cargo || 'Docente Guía (Maestro Titular)',
+        unidadEducativa: currentUserData.unidad_educativa || currentUserData.esfm_ua || 'U.E. Franz Tamayo',
+        distrito: currentUserData.distrito || 'El Alto 1',
+        ci: currentUserData.ci || 'S/C'
+      });
+
+      // 2. Rehidratación fresca desde Backend para recuperar teléfono si no estaba en la sesión previa
       try {
-        const parsed = JSON.parse(savedUser);
-        setProfile(prev => ({
-          ...prev,
-          nombre: parsed.nombre || prev.nombre,
-          apellido: parsed.apellido || prev.apellido,
-          correo: parsed.email || prev.correo
-        }));
+        const allUsers = await userService.getUsers();
+        const list = Array.isArray(allUsers) ? allUsers : allUsers?.usuarios || [];
+        const freshUser = list.find(u => u.id === currentUserData.id || u.username === currentUserData.username);
+
+        if (freshUser) {
+          const freshTelefono = freshUser.telefono || freshUser.phone || freshUser.celular || initialTelefono;
+          
+          setProfileData(prev => ({
+            ...prev,
+            nombre: freshUser.nombre || prev.nombre,
+            apellido: freshUser.apellido || prev.apellido,
+            username: freshUser.username || prev.username,
+            telefono: freshTelefono
+          }));
+
+          // Sincronizar en localStorage
+          const updatedUser = {
+            ...currentUserData,
+            ...freshUser,
+            telefono: freshTelefono
+          };
+          localStorage.setItem("user", JSON.stringify(updatedUser));
+        }
       } catch (e) {
-        console.error("Error al cargar perfil del docente guía", e);
+        console.warn("No se pudo refrescar los datos remotos del usuario, usando caché local.");
       }
-    }
+    };
+
+    fetchFreshUserData();
   }, []);
 
-  const handleSaveContact = (e) => {
+  // ACTUALIZAR PERFIL (NOMBRE, APELLIDO, USERNAME Y TELÉFONO)
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    setMessage({ type: 'success', text: 'Datos de contacto actualizados correctamente en PostgreSQL.' });
-    setTimeout(() => setMessage(null), 4000);
+    setMessage(null);
+    setLoadingProfile(true);
+
+    try {
+      const payload = {
+        nombre: profileData.nombre,
+        apellido: profileData.apellido,
+        username: profileData.username,
+        telefono: profileData.telefono
+      };
+
+      const response = await userService.updateProfile(payload);
+
+      // ACTUALIZAR LOCALSTORAGE CONSERVANDO EL TELÉFONO ACTUALIZADO
+      const currentUserLocal = JSON.parse(localStorage.getItem("user") || "{}");
+      const updatedUser = {
+        ...currentUserLocal,
+        nombre: profileData.nombre,
+        apellido: profileData.apellido,
+        username: profileData.username,
+        telefono: profileData.telefono,
+        phone: profileData.telefono, // Resguardo por compatibilidad
+        ...(response?.user || {})
+      };
+      
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      window.dispatchEvent(new Event("storage"));
+
+      setMessage({ type: 'success', text: 'Datos personales y de la cuenta actualizados correctamente.' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'No se pudo actualizar el perfil.' });
+    } finally {
+      setLoadingProfile(false);
+      setTimeout(() => setMessage(null), 5000);
+    }
   };
 
-  const handleChangePassword = (e) => {
+  // CAMBIAR CONTRASEÑA
+  const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (passwords.nueva !== passwords.confirmacion) {
-      setMessage({ type: 'error', text: 'La nueva contraseña y su confirmación no coinciden.' });
+    setMessage(null);
+
+    if (securityData.newPassword !== securityData.confirmPassword) {
+      setMessage({ type: 'error', text: 'La nueva contraseña y la confirmación no coinciden.' });
       return;
     }
-    if (passwords.nueva.length < 6) {
+    if (securityData.newPassword.length < 6) {
       setMessage({ type: 'error', text: 'La nueva contraseña debe tener al menos 6 caracteres.' });
       return;
     }
 
-    setMessage({ type: 'success', text: 'Contraseña actualizada exitosamente.' });
-    setPasswords({ actual: '', nueva: '', confirmacion: '' });
-    setTimeout(() => setMessage(null), 4000);
+    setLoadingSecurity(true);
+
+    try {
+      await userService.changePassword({
+        currentPassword: securityData.currentPassword,
+        newPassword: securityData.newPassword
+      });
+
+      setMessage({ type: 'success', text: 'Contraseña actualizada con éxito. Credenciales reaseguradas.' });
+      setSecurityData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Error al cambiar la contraseña. Verifique su contraseña actual.' });
+    } finally {
+      setLoadingSecurity(false);
+      setTimeout(() => setMessage(null), 5000);
+    }
   };
 
   return (
     <div className="space-y-6 font-sans">
       
-      {/* BANNER ENCABEZADO INSTITUCIONAL */}
+      {/* BANNER ENCABEZADO */}
       <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-[#121824] via-[#1A1A1A] to-[#801B28] p-6 sm:p-8 text-white shadow-2xl border border-white/10">
         <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
@@ -88,7 +192,7 @@ export const MiCuentaGuia = () => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Gestión de información personal, asignación de aula en Unidad Educativa y credenciales de acceso.
+              Gestión de información personal del Maestro Titular, actualización de datos de contacto y credenciales.
             </p>
           </div>
         </div>
@@ -101,74 +205,103 @@ export const MiCuentaGuia = () => {
             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
             : 'bg-rose-50 text-rose-800 border border-rose-200'
         }`}>
-          <CheckCircle2 size={16} />
+          {message.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           {message.text}
         </div>
       )}
 
-      {/* TARJETA PRINCIPAL DEL PERFIL */}
+      {/* TARJETA INFORMATIVA DEL DOCENTE GUÍA */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col md:flex-row items-center gap-6">
         <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-[#801B28] to-[#121824] text-white shadow-xl text-3xl font-black font-mono">
-          {profile.nombre.charAt(0)}{profile.apellido.charAt(0)}
+          {profileData.nombre ? profileData.nombre.charAt(0) : 'D'}{profileData.apellido ? profileData.apellido.charAt(0) : 'G'}
         </div>
 
         <div className="space-y-1 text-center md:text-left flex-1">
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-            <h2 className="text-xl font-black text-slate-900">{profile.nombre} {profile.apellido}</h2>
+            <h2 className="text-xl font-black text-slate-900">{profileData.nombre} {profileData.apellido}</h2>
             <span className="px-3 py-1 rounded-full bg-rose-50 border border-rose-100 text-[#801B28] text-xs font-mono font-bold">
-              C.I.: {profile.ci}
+              C.I.: {userInfo.ci}
             </span>
           </div>
           <p className="text-xs font-bold text-slate-600 flex items-center justify-center md:justify-start gap-1">
             <School size={15} className="text-[#8C731A]" />
-            {profile.cargo} — {profile.unidadEducativa}
+            {userInfo.cargo} — {userInfo.unidadEducativa}
           </p>
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-1 text-[11px] font-semibold text-slate-500">
-            <span>Distrito: {profile.distrito}</span>
+            <span>Distrito: {userInfo.distrito}</span>
             <span>•</span>
-            <span>Curso Asignado: {profile.cursoAsignado}</span>
+            <span>Item: {userInfo.item}</span>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         
-        {/* FORMULARIO 1: ACTUALIZACIÓN DE CONTACTO */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+        {/* BLOQUE 1: DATOS PERSONALES / MI CUENTA */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
           <div className="border-b border-slate-100 pb-4">
-            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <Mail size={18} className="text-[#801B28]" />
-              Datos de contacto
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Dirección de correo electrónico y teléfono móvil de contacto.
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <User size={20} className="text-[#801B28]" />
+              Mi cuenta
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Actualiza tus datos personales de contacto e identificación de usuario.
             </p>
           </div>
 
-          <form onSubmit={handleSaveContact} className="space-y-4 text-xs">
+          <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-extrabold text-slate-700 mb-1">Nombre *</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    required
+                    value={profileData.nombre}
+                    onChange={(e) => setProfileData({ ...profileData, nombre: e.target.value })}
+                    className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-extrabold text-slate-700 mb-1">Apellido *</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    required
+                    value={profileData.apellido}
+                    onChange={(e) => setProfileData({ ...profileData, apellido: e.target.value })}
+                    className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Correo Electrónico *</label>
+              <label className="block font-extrabold text-slate-700 mb-1">Nombre de Usuario *</label>
               <div className="relative">
-                <Mail className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                <User className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={profile.correo}
-                  onChange={(e) => setProfile({ ...profile, correo: e.target.value })}
-                  className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                  value={profileData.username}
+                  onChange={(e) => setProfileData({ ...profileData, username: e.target.value })}
+                  className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-mono font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Teléfono / Celular de Contacto *</label>
+              <label className="block font-extrabold text-slate-700 mb-1">Teléfono / Celular</label>
               <div className="relative">
                 <Phone className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
                   type="text"
-                  required
-                  value={profile.telefono}
-                  onChange={(e) => setProfile({ ...profile, telefono: e.target.value })}
+                  value={profileData.telefono}
+                  onChange={(e) => setProfileData({ ...profileData, telefono: e.target.value })}
                   className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
                 />
               </div>
@@ -177,67 +310,73 @@ export const MiCuentaGuia = () => {
             <div className="pt-2">
               <button
                 type="submit"
-                className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all cursor-pointer"
+                disabled={loadingProfile}
+                className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all cursor-pointer disabled:opacity-50"
               >
-                <Save size={16} /> [ Guardar cambios de contacto ]
+                {loadingProfile ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Save size={16} />
+                )}
+                Guardar Cambios
               </button>
             </div>
           </form>
         </div>
 
-        {/* FORMULARIO 2: CAMBIO DE CONTRASEÑA */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+        {/* BLOQUE 2: SEGURIDAD (CAMBIO DE CONTRASEÑA) */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
           <div className="border-b border-slate-100 pb-4">
-            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <KeyRound size={18} className="text-[#8C731A]" />
-              Seguridad de la cuenta
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Actualiza tu clave de acceso al sistema de gestión IEPC-PEC.
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <ShieldCheck size={20} className="text-[#8C731A]" />
+              Seguridad
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Modifica tu contraseña de acceso para resguardar la información del sistema.
             </p>
           </div>
 
           <form onSubmit={handleChangePassword} className="space-y-4 text-xs">
             <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Contraseña Actual *</label>
+              <label className="block font-extrabold text-slate-700 mb-1">Contraseña actual *</label>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                <KeyRound className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="password"
+                  type="text"
                   required
                   placeholder="••••••••"
-                  value={passwords.actual}
-                  onChange={(e) => setPasswords({ ...passwords, actual: e.target.value })}
+                  value={securityData.currentPassword}
+                  onChange={(e) => setSecurityData({ ...securityData, currentPassword: e.target.value })}
                   className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Nueva Contraseña *</label>
+              <label className="block font-extrabold text-slate-700 mb-1">Nueva contraseña *</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="password"
+                  type="text"
                   required
                   placeholder="Mínimo 6 caracteres"
-                  value={passwords.nueva}
-                  onChange={(e) => setPasswords({ ...passwords, nueva: e.target.value })}
+                  value={securityData.newPassword}
+                  onChange={(e) => setSecurityData({ ...securityData, newPassword: e.target.value })}
                   className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-extrabold text-slate-700 mb-1">Confirmar Nueva Contraseña *</label>
+              <label className="block font-extrabold text-slate-700 mb-1">Confirmar contraseña *</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
                 <input
-                  type="password"
+                  type="text"
                   required
                   placeholder="Repita la nueva contraseña"
-                  value={passwords.confirmacion}
-                  onChange={(e) => setPasswords({ ...passwords, confirmacion: e.target.value })}
+                  value={securityData.confirmPassword}
+                  onChange={(e) => setSecurityData({ ...securityData, confirmPassword: e.target.value })}
                   className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
                 />
               </div>
@@ -246,9 +385,15 @@ export const MiCuentaGuia = () => {
             <div className="pt-2">
               <button
                 type="submit"
-                className="flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-slate-800 transition-all cursor-pointer"
+                disabled={loadingSecurity}
+                className="flex items-center gap-2 rounded-2xl bg-[#8C731A] px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-[#735E14] transition-all cursor-pointer disabled:opacity-50"
               >
-                <ShieldCheck size={16} /> [ Cambiar contraseña ]
+                {loadingSecurity ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Lock size={16} />
+                )}
+                Cambiar contraseña
               </button>
             </div>
           </form>

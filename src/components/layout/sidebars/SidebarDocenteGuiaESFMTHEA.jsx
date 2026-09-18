@@ -5,7 +5,8 @@ import {
   ClipboardCheck,
   TrendingUp,
   Search,
-  User
+  User,
+  FileBarChart2
 } from "lucide-react";
 import { SidebarLayoutESFMTHEA } from "../sidebarLayoutESFMTHEA";
 
@@ -31,10 +32,11 @@ const MENU_ITEMS_DOCENTE_GUIA = [
     link: "/docente-guia/seguimiento", 
     icon: TrendingUp 
   },
+  
   { 
-    name: "Consultas", 
-    link: "/docente-guia/consultas", 
-    icon: Search 
+    name: "Reportes", 
+    link: "/docente-guia/reportes", 
+    icon: FileBarChart2 
   },
   { 
     name: "Mi cuenta", 

@@ -26,9 +26,11 @@ import {
 import { read, utils } from 'xlsx';
 
 import { userService } from '../../services/userService';
+import { especialidadService } from '../../services/especialidadService';
 
 export const UserManagement = () => {
   const [users, setUsers] = useState([]);
+  const [especialidades, setEspecialidades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -73,7 +75,7 @@ export const UserManagement = () => {
     rol: 'ESTUDIANTE',
     estado: 'ACTIVO',
     esfm_ua: 'ESFM/UA - El Alto',
-    especialidad: 'Educación Primaria Comunitaria Vocacional',
+    especialidad: '',
     item_docente: ''
   });
 
@@ -83,13 +85,34 @@ export const UserManagement = () => {
   const [targetRoleForPersonal, setTargetRoleForPersonal] = useState('DOCENTE_ACOMPANANTE');
   const [parsedExcelUsers, setParsedExcelUsers] = useState([]);
 
-  // OBTENER LISTA DE USUARIOS (SOPORTA ACTUALIZACIÓN SILENCIOSA)
+  // OBTENER LISTA DE USUARIOS Y ESPECIALIDADES DESDE LA API
   const fetchUsers = async (showLoader = true) => {
     if (showLoader) setLoading(true);
     try {
-      const data = await userService.getUsers();
-      setUsers(data);
-      setSelectedIds([]);
+      const [usersData, especialidadesData] = await Promise.allSettled([
+        userService.getUsers(),
+        especialidadService.getEspecialidades()
+      ]);
+
+      if (usersData.status === 'fulfilled') {
+        setUsers(usersData.value);
+        setSelectedIds([]);
+      } else {
+        showFeedback('Error', 'No se pudieron cargar los usuarios de la base de datos.', 'error');
+      }
+
+      if (especialidadesData.status === 'fulfilled') {
+        const list = Array.isArray(especialidadesData.value) 
+          ? especialidadesData.value 
+          : especialidadesData.value?.especialidades || [];
+        setEspecialidades(list);
+
+        // Establecer especialidad por defecto si no hay ninguna en el formulario
+        if (list.length > 0 && !formData.especialidad) {
+          setFormData(prev => ({ ...prev, especialidad: list[0].nombre || list[0].nombre_especialidad || '' }));
+        }
+      }
+
     } catch (err) {
       showFeedback('Error de Conexión', err.message || 'Error al conectar con la base de datos.', 'error');
     } finally {
@@ -137,19 +160,19 @@ export const UserManagement = () => {
     );
   };
 
-  // ACTIVAR / DESACTIVAR ESTADO RÁPIDO (SIN RECARGAR PAGINA/LOADER)
+  // ACTIVAR / DESACTIVAR ESTADO RÁPIDO
   const handleToggleStatus = async (user) => {
     const nextStatus = user.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
     try {
       await userService.toggleUserStatus(user.id, nextStatus);
       showFeedback('Estado Modificado', `El usuario ${user.username} ahora está ${nextStatus}.`, 'success');
-      fetchUsers(false); // Actualización silenciosa en segundo plano
+      fetchUsers(false);
     } catch (err) {
       showFeedback('Error al Cambiar Estado', err.message || 'No se pudo actualizar el estado.', 'error');
     }
   };
 
-  // AUTO-GENERACIÓN DE USERNAME (nombre_carnet) Y PASSWORD (carnet*)
+  // AUTO-GENERACIÓN DE USERNAME Y PASSWORD
   const handleNameOrCiChange = (field, value) => {
     const updatedForm = { ...formData, [field]: value };
     const primerNombre = (updatedForm.nombres || '').trim().split(' ')[0].toLowerCase();
@@ -183,7 +206,7 @@ export const UserManagement = () => {
     });
   };
 
-  // CREAR / EDITAR USUARIO (ACTUALIZACIÓN SILENCIOSA)
+  // CREAR / EDITAR USUARIO
   const handleSubmitUser = async (e) => {
     e.preventDefault();
 
@@ -220,27 +243,25 @@ export const UserManagement = () => {
 
       setShowNewUserModal(false);
       resetForm();
-      fetchUsers(false); // Actualización silenciosa
+      fetchUsers(false);
     } catch (err) {
       showFeedback('Error al Guardar', err.message || 'Ocurrió un fallo al procesar la solicitud.', 'error');
     }
   };
 
-  // PROCESO DE ELIMINACIÓN INDIVIDUAL
+  // PROCESO DE ELIMINACIÓN
   const confirmSingleDelete = (id) => {
     setUserToDeleteId(id);
     setDeleteTarget('single');
     setShowDeleteConfirmModal(true);
   };
 
-  // PROCESO DE ELIMINACIÓN EN LOTE
   const confirmBatchDelete = () => {
     if (selectedIds.length === 0) return;
     setDeleteTarget('batch');
     setShowDeleteConfirmModal(true);
   };
 
-  // EJECUCIÓN DE ELIMINACIÓN (ACTUALIZACIÓN SILENCIOSA)
   const executeDelete = async () => {
     setShowDeleteConfirmModal(false);
     setActionLoading(true);
@@ -253,7 +274,7 @@ export const UserManagement = () => {
         const res = await userService.deleteMultipleUsers(selectedIds);
         showFeedback('Eliminación Masiva', res.message || 'Usuarios eliminados correctamente.', 'success');
       }
-      fetchUsers(false); // Actualización silenciosa
+      fetchUsers(false);
     } catch (err) {
       showFeedback('Error al Eliminar', err.message || 'No se pudo completar la eliminación.', 'error');
     } finally {
@@ -275,7 +296,7 @@ export const UserManagement = () => {
       rol: user.rol,
       estado: user.estado || 'ACTIVO',
       esfm_ua: user.esfm_ua || 'ESFM/UA - El Alto',
-      especialidad: user.especialidad || 'Educación Primaria Comunitaria Vocacional',
+      especialidad: user.especialidad || (especialidades[0]?.nombre || 'Educación Primaria Comunitaria Vocacional'),
       item_docente: user.item_docente || ''
     });
     setShowNewUserModal(true);
@@ -295,7 +316,7 @@ export const UserManagement = () => {
       rol: 'ESTUDIANTE',
       estado: 'ACTIVO',
       esfm_ua: 'ESFM/UA - El Alto',
-      especialidad: 'Educación Primaria Comunitaria Vocacional',
+      especialidad: especialidades[0]?.nombre || especialidades[0]?.nombre_especialidad || '',
       item_docente: ''
     });
   };
@@ -440,7 +461,6 @@ export const UserManagement = () => {
     }
   };
 
-  // IMPORTAR EXCEL CON ACTUALIZACIÓN SILENCIOSA
   const handleImportExcelToDB = async () => {
     if (parsedExcelUsers.length === 0) return;
 
@@ -451,7 +471,7 @@ export const UserManagement = () => {
       setShowExcelModal(false);
       setExcelFile(null);
       setParsedExcelUsers([]);
-      fetchUsers(false); // Actualización silenciosa
+      fetchUsers(false);
     } catch (err) {
       showFeedback('Error de Importación', err.message || 'Falló el proceso masivo.', 'error');
     } finally {
@@ -497,7 +517,7 @@ export const UserManagement = () => {
         </div>
       </div>
 
-      {/* BARRA DE ACCIÓN PARA SELECCIÓN MÚLTIPLE */}
+      {/* SELECCIÓN MÚLTIPLE */}
       {selectedIds.length > 0 && (
         <div className="flex items-center justify-between rounded-2xl bg-[#801B28] px-6 py-3 text-white shadow-xl animate-in fade-in slide-in-from-top-2">
           <span className="text-xs font-black uppercase tracking-wider">
@@ -514,7 +534,7 @@ export const UserManagement = () => {
         </div>
       )}
 
-      {/* BÚSQUEDA Y FILTROS */}
+      {/* FILTROS Y BÚSQUEDA */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="relative col-span-1 sm:col-span-1">
           <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
@@ -556,7 +576,7 @@ export const UserManagement = () => {
         </div>
       </div>
 
-      {/* TABLA DE USUARIOS CON COLUMNA ESTADO */}
+      {/* TABLA PRINCIPAL DE USUARIOS */}
       <div className="rounded-3xl border border-slate-200 bg-white overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -614,7 +634,6 @@ export const UserManagement = () => {
                         </span>
                       </td>
 
-                      {/* COLUMNA DE ESTADO CON SWITCH INTERACTIVO */}
                       <td className="py-3.5 px-4 text-center">
                         <button
                           onClick={() => handleToggleStatus(user)}
@@ -670,7 +689,7 @@ export const UserManagement = () => {
         </div>
       </div>
 
-      {/* MODAL: REGISTRAR / EDITAR */}
+      {/* MODAL: REGISTRAR / EDITAR CON SELECTOR DE ESPECIALIDAD DINÁMICO DESDE API */}
       {showNewUserModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -831,17 +850,37 @@ export const UserManagement = () => {
                   />
                 </div>
 
+                {/* CAMPO DE ESPECIALIDAD TRANSFORMADO EN SELECT DINÁMICO */}
                 <div>
                   <label className="block font-extrabold text-slate-700 mb-1">Especialidad *</label>
-                  <input
-                    type="text"
+                  <select
                     required
                     value={formData.especialidad}
                     onChange={(e) => setFormData({ ...formData, especialidad: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
-                    placeholder="Ej. Educación Primaria Comunitaria Vocacional"
-                  />
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-bold text-slate-700 focus:border-[#8C731A] focus:outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">-- Seleccione una Especialidad --</option>
+                    
+                    {/* Renderizado de Especialidades traídas desde PostgreSQL */}
+                    {especialidades.map((esp) => {
+                      const nombreEsp = esp.nombre || esp.nombre_especialidad || esp;
+                      return (
+                        <option key={esp.id || nombreEsp} value={nombreEsp}>
+                          {nombreEsp}
+                        </option>
+                      );
+                    })}
+
+                    {/* Opción de respaldo si la especialidad previa del usuario no está en la API */}
+                    {formData.especialidad && 
+                     !especialidades.some(e => (e.nombre || e.nombre_especialidad || e) === formData.especialidad) && (
+                      <option value={formData.especialidad}>
+                        {formData.especialidad}
+                      </option>
+                    )}
+                  </select>
                 </div>
+
               </div>
 
               <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
@@ -1078,7 +1117,7 @@ export const UserManagement = () => {
         </div>
       )}
 
-      {/* MODAL PERSONALIZADO DE FEEDBACK/NOTIFICACIÓN */}
+      {/* MODAL PERSONALIZADO DE FEEDBACK */}
       {feedbackModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95">

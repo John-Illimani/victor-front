@@ -62,5 +62,13 @@ export const studentService = {
     } catch (error) {
       throw error.response?.data || { message: "Error durante la importación masiva." };
     }
+  },
+   getMyStudentProfile: async () => {
+    try {
+      const response = await api.get("/estudiantes/me/perfil-completo");
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al obtener perfil del estudiante." };
+    }
   }
 };
