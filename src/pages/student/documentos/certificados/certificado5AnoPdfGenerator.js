@@ -1,14 +1,12 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
-import { PDF417 } from 'pdf417-generator';
-import { centralizador5toAnoService } from '../../../services/fichas/5año/centralizador5toAnoService';
-import { userService } from '../../../services/userService';
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import { PDF417 } from "pdf417-generator";
+import { centralizador5toAnoService } from "../../../../services/fichas/5año/centralizador5toAnoService";
+import { userService } from "../../../../services/userService";
 
 const COLOR_TEXT = rgb(0, 0, 0);
-const COLOR_WHITE = rgb(1, 1, 1);
-const COLOR_TITLE = rgb(0 / 255, 114 / 255, 187 / 255);
-const COLOR_HEADER_BG = rgb(0 / 255, 114 / 255, 187 / 255);
-const COLOR_BORDER = rgb(0 / 255, 114 / 255, 187 / 255);
+const COLOR_BORDER = rgb(0, 0, 0);
+const COLOR_TABLE_HEADER = rgb(230 / 255, 230 / 255, 230 / 255);
 
 const BORDER = 0.8;
 
@@ -19,11 +17,11 @@ function formatEnteroEstricto(val) {
   return String(Math.round(num));
 }
 
-const plainTokens = (text, font, color) =>
-  String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color }));
+const plainTokens = (text, fontObj, color) =>
+  String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font: fontObj, color }));
 
-const underlineTokens = (text, font, color) =>
-  String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
+const boldTokens = (text, fontBoldObj, color) =>
+  String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font: fontBoldObj, color }));
 
 function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHeight, spaceFont, indent = 0 }) {
   const spaceWidth = spaceFont.widthOfTextAtSize(' ', fontSize);
@@ -72,16 +70,6 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
         color: token.color || COLOR_TEXT,
       });
 
-      if (token.underline) {
-        page.drawLine({
-          start: { x: cursorX, y: cursorY - 2.5 },
-          end: { x: cursorX + wordW, y: cursorY - 2.5 },
-          thickness: 0.8,
-          dashArray: [1.5, 1.5],
-          color: token.color || COLOR_TEXT,
-        });
-      }
-
       cursorX += wordW + gapWidth;
     });
 
@@ -91,14 +79,14 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
   return cursorY;
 }
 
-function wrapText(text, font, fontSize, maxWidth) {
+function wrapText(text, fontObj, fontSize, maxWidth) {
   const words = String(text ?? "").split(/\s+/).filter(Boolean);
   const lines = [];
   let currentLine = "";
 
   words.forEach(word => {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+    const testWidth = fontObj.widthOfTextAtSize(testLine, fontSize);
 
     if (testWidth <= maxWidth) {
       currentLine = testLine;
@@ -110,16 +98,6 @@ function wrapText(text, font, fontSize, maxWidth) {
 
   if (currentLine) lines.push(currentLine);
   return lines;
-}
-
-function drawDottedLine(page, x1, x2, y) {
-  page.drawLine({
-    start: { x: x1, y },
-    end: { x: x2, y },
-    thickness: 0.8,
-    dashArray: [1.5, 1.5],
-    color: COLOR_TEXT,
-  });
 }
 
 function hLine(page, x1, x2, y) {
@@ -134,7 +112,6 @@ function fillRect(page, x, yTop, w, h, color) {
   page.drawRectangle({ x, y: yTop - h, width: w, height: h, color });
 }
 
-// Genera un Canvas HTML para el código PDF417
 const generarPdf417DataUrl = (texto) => {
   return new Promise((resolve) => {
     const canvas = document.createElement('canvas');
@@ -148,7 +125,7 @@ const generarPdf417DataUrl = (texto) => {
   });
 };
 
-export const imprimirCentralizador5toAno = async (estudianteId, blockchainData = {}) => {
+export const imprimirCertificado5toAno = async (estudianteId, blockchainData = {}) => {
   try {
     const response = await centralizador5toAnoService.getByEstudiante(estudianteId);
 
@@ -164,22 +141,31 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
     const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
     const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
 
-    let docenteTutorNombre = d.docente_tutor_nombre || "";
-    if (d.docente_tutor_id) {
-      try {
-        const usuarios = await userService.getUsers();
-        if (Array.isArray(usuarios)) {
-          const tutorUser = usuarios.find(u => String(u.id) === String(d.docente_tutor_id));
-          if (tutorUser) {
-            docenteTutorNombre = `${tutorUser.nombre || ""} ${tutorUser.apellido || ""}`.trim();
-          }
-        }
-      } catch (errUser) {
-        console.warn("No se pudo obtener la lista de usuarios para el tutor:", errUser);
+    let nombreEstudiante = d.estudiante_nombre || d.apellidos_nombres || "";
+    let ciEstudiante = d.ci || "S/N";
+    let especialidadEstudiante = d.especialidad || "";
+
+    try {
+      const usuariosRes = await userService.getUsers();
+      const listaUsuarios = Array.isArray(usuariosRes) ? usuariosRes : (usuariosRes.datos || []);
+      const uEst = listaUsuarios.find(u => 
+        String(u.id) === String(estudianteId) || 
+        String(u.ci) === String(estudianteId) || 
+        String(u.username) === String(estudianteId)
+      );
+
+      if (uEst) {
+        const nom = uEst.nombre || "";
+        const ape = uEst.apellido || "";
+        nombreEstudiante = `${nom} ${ape}`.trim().toUpperCase();
+        ciEstudiante = uEst.ci || ciEstudiante;
+        especialidadEstudiante = uEst.especialidad || especialidadEstudiante;
       }
+    } catch (err) {
+      console.warn("No se pudo obtener el perfil de usuario:", err);
     }
 
-    const urlPlantilla = encodeURI('/pdf/5año/plantilla.pdf');
+    const urlPlantilla = encodeURI('/pdf/5año/plantillaCertificado.pdf');
     let pdfDoc;
 
     try {
@@ -200,10 +186,9 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
 
     pdfDoc.registerFontkit(fontkit);
 
-    let page = pdfDoc.getPages()[0];
-    page.setSize(612, 792);
+    const page = pdfDoc.getPages()[0];
+    page.setSize(612, 792); 
     const pageWidth = 612;
-    const pageHeight = 792;
 
     let font, fontBold;
     try {
@@ -219,84 +204,99 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
       fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    const MARGIN_TOP = 141.73;          
-    const MARGIN_LEFT = 85.04;          
-    const MARGIN_RIGHT = 51.31;         
+    const MARGIN_LEFT = 60;          
+    const MARGIN_RIGHT = 60;         
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT);
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
-    const maxLineRight = pageWidth - MARGIN_RIGHT; // Margen derecho estricto de rincón a rincón
 
-    let cursorY = pageHeight - MARGIN_TOP;
+    let cursorY = 665;
 
-    // HELPER DE DATOS REFERENCIALES DE RINCÓN A RINCÓN (ETIQUETA NORMAL, VALOR EN NEGRITA)
-    const drawFullReferentialField = (label, value) => {
-      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 8, font, color: COLOR_TEXT });
-      const labelW = font.widthOfTextAtSize(label, 8);
-      const valX = MARGIN_LEFT + labelW;
-      
-      // Trazado de rincón a rincón
-      drawDottedLine(page, valX, maxLineRight, cursorY - 2.5);
-
-      const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
-      if (valText) {
-        page.drawText(valText, { x: valX, y: cursorY, size: 8, font: fontBold, color: COLOR_TEXT });
-      }
-
-      cursorY -= 14;
-    };
-
-    // TÍTULO PRINCIPAL
-    const title = "FICHA CENTRALIZADORA DE EVALUACIÓN CUALITATIVA-CUANTITATIVA";
-    const wT = fontBold.widthOfTextAtSize(title, 11);
-    page.drawText(title, { x: CONTENT_CENTER_X - wT / 2, y: cursorY, size: 11, font: fontBold, color: COLOR_TITLE });
+    // 1. TÍTULO PRINCIPAL (CENTRADO)
+    const t1 = "CERTIFICACIÓN";
+    const t1W = fontBold.widthOfTextAtSize(t1, 15);
+    page.drawText(t1, { x: CONTENT_CENTER_X - t1W / 2, y: cursorY, size: 15, font: fontBold, color: COLOR_TEXT });
     cursorY -= 22;
 
-    // DATOS REFERENCIALES
-    page.drawText("DATOS REFERENCIALES", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
+    // 2. ENCABEZADO DE ATRIBUCIONES
+    const headerWidth = 310;
+    const headerX = RIGHT_X - headerWidth;
+    const tokensHeader = plainTokens("LA DIRECCIÓN ACADÉMICA Y COORDINACIÓN ACADÉMICA IEPC - PEC DE LA ESCUELA SUPERIOR DE FORMACIÓN DE MAESTRAS Y MAESTROS TECNOLÓGICO Y HUMANÍSTICO EL ALTO, EN USO DE SUS ATRIBUCIONES:", font);
+
+    cursorY = drawJustifiedParagraph(page, tokensHeader, {
+      x: headerX,
+      y: cursorY,
+      maxWidth: headerWidth,
+      fontSize: 8.5,
+      lineHeight: 11,
+      spaceFont: font
+    });
+
     cursorY -= 14;
 
-    const nombreEstudianteStr = d.estudiante_nombre || d.apellidos_nombres || "ESTUDIANTE REGISTRADO";
+    // 3. CERTIFICA:
+    page.drawText("CERTIFICA:", { x: MARGIN_LEFT, y: cursorY, size: 9.5, font: fontBold, color: COLOR_TEXT });
+    cursorY -= 14;
 
-    // Docente Tutor de Rincón a Rincón
-    drawFullReferentialField("Docente Tutor/a Acompañante: ", docenteTutorNombre);
+    const codReg = `506-${ciEstudiante}`;
 
-    // Estudiante de Rincón a Rincón
-    drawFullReferentialField("Estudiante: ", nombreEstudianteStr);
+    const tokensCertifica = [
+      ...plainTokens("Que el/la estudiante ", font),
+      ...boldTokens(nombreEstudiante, fontBold),
+      ...plainTokens(" con C.I. ", font),
+      ...boldTokens(`${ciEstudiante} L.P.`, fontBold),
+      ...plainTokens(", Código: ", font),
+      ...boldTokens(codReg, fontBold),
+      ...plainTokens(" de la especialidad de ", font),
+      ...boldTokens(especialidadEstudiante.toUpperCase(), fontBold),
+      ...plainTokens(" de la Escuela Superior de Formación de Maestras y Maestros Tecnológico y Humanístico El Alto, según registro que cursa en los archivos de la Coordinación Académica de Investigación Educativa y Producción de Conocimientos - Práctica Educativa Comunitaria (IEPC - PEC), se encuentra la documentación:", font)
+    ];
 
-    // Especialidad de Rincón a Rincón
-    drawFullReferentialField("Especialidad: ", d.especialidad || "");
+    cursorY = drawJustifiedParagraph(page, tokensCertifica, {
+      x: MARGIN_LEFT,
+      y: cursorY,
+      maxWidth: CONTENT_WIDTH,
+      fontSize: 8.5,
+      lineHeight: 11,
+      spaceFont: font
+    });
 
     cursorY -= 8;
+    page.drawText("Cuadro Centralizador de Evaluación Anual, con los siguientes datos:", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
+    cursorY -= 14;
 
-    // TABLA CENTRALIZADORA
-    const colW = [75, 85, 180.65, 85, 50];
+    // 4. ESTRUCTURA DE LA TABLA CENTRALIZADORA DE 5TO AÑO
+    const colW = [75, 85, 182.65, 104.35, 45];
     let cX = [MARGIN_LEFT];
     for (let i = 0; i < colW.length; i++) cX.push(cX[i] + colW[i]);
 
+    // FILA SUPERIOR: EVALUACIÓN DE LA PEC
     const secTopY = cursorY;
     const secH = 16;
-    fillRect(page, MARGIN_LEFT, secTopY, CONTENT_WIDTH, secH, COLOR_HEADER_BG);
+    fillRect(page, MARGIN_LEFT, secTopY, CONTENT_WIDTH, secH, COLOR_TABLE_HEADER);
     hLine(page, MARGIN_LEFT, RIGHT_X, secTopY);
     hLine(page, MARGIN_LEFT, RIGHT_X, secTopY - secH);
+    vLine(page, MARGIN_LEFT, secTopY, secTopY - secH);
+    vLine(page, RIGHT_X, secTopY, secTopY - secH);
 
     const txtSecHeader = "EVALUACIÓN DE LA PEC";
-    page.drawText(txtSecHeader, { x: CONTENT_CENTER_X - (fontBold.widthOfTextAtSize(txtSecHeader, 8.5) / 2), y: secTopY - 11, size: 8.5, font: fontBold, color: COLOR_WHITE });
+    page.drawText(txtSecHeader, { x: CONTENT_CENTER_X - (fontBold.widthOfTextAtSize(txtSecHeader, 8.5) / 2), y: secTopY - 11, size: 8.5, font: fontBold, color: COLOR_TEXT });
 
     cursorY -= secH;
 
+    // SEGUNDA FILA: CABECERAS DE COLUMNAS
     const headTopY = cursorY;
     const headH = 16;
-    fillRect(page, MARGIN_LEFT, headTopY, CONTENT_WIDTH, headH, COLOR_HEADER_BG);
+    fillRect(page, MARGIN_LEFT, headTopY, CONTENT_WIDTH, headH, COLOR_TABLE_HEADER);
     hLine(page, MARGIN_LEFT, RIGHT_X, headTopY - headH);
 
     const headers = ["ETAPA", "ACTIVIDAD", "INDICADOR", "INSTRUMENTO", "PUNTAJE"];
     headers.forEach((hText, idx) => {
       const wH = fontBold.widthOfTextAtSize(hText, 7.5);
-      page.drawText(hText, { x: cX[idx] + (colW[idx] / 2) - (wH / 2), y: headTopY - 11, size: 7.5, font: fontBold, color: COLOR_WHITE });
+      page.drawText(hText, { x: cX[idx] + (colW[idx] / 2) - (wH / 2), y: headTopY - 11, size: 7.5, font: fontBold, color: COLOR_TEXT });
     });
 
-    for (let c = 0; c < cX.length; c++) vLine(page, cX[c], secTopY, headTopY - headH);
+    for (let c = 0; c < cX.length; c++) vLine(page, cX[c], headTopY, headTopY - headH);
 
     cursorY -= headH;
 
@@ -314,7 +314,7 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
       const actLines = wrapText(f.actividad, fontBold, 7.5, colW[1] - 8);
       const insLines = wrapText(f.instrumento, font, 7.5, colW[3] - 8);
 
-      const rH = Math.max(24, indLines.length * 8 + 6, insLines.length * 8 + 6);
+      const rH = Math.max(22, indLines.length * 8 + 6, insLines.length * 8 + 6);
       const rowTopY = cursorY;
 
       if (idx === 1) ejecYStart = rowTopY;
@@ -354,7 +354,7 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
 
       page.drawText(f.puntaje, { x: cX[4] + (colW[4] / 2) - (fontBold.widthOfTextAtSize(f.puntaje, 8) / 2), y: rowTopY - (rH / 2) - 3, size: 8, font: fontBold, color: COLOR_TEXT });
 
-      for (let c = 1; c <= 5; c++) vLine(page, cX[c], rowTopY, rowTopY - rH);
+      for (let c = 1; c < cX.length; c++) vLine(page, cX[c], rowTopY, rowTopY - rH);
 
       cursorY -= rH;
     });
@@ -365,14 +365,18 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
     const txtEjec = "Ejecución";
     page.drawText(txtEjec, { x: cX[0] + (colW[0] / 2) - (fontBold.widthOfTextAtSize(txtEjec, 8) / 2), y: ejecYStart - ((ejecYStart - cursorY) / 2) - 3, size: 8, font: fontBold, color: COLOR_TEXT });
 
+    // CALIFICACIÓN PROMEDIO FINAL 1
     const prom1H = 16;
+    fillRect(page, cX[0], cursorY, CONTENT_WIDTH, prom1H, COLOR_TABLE_HEADER);
     hLine(page, MARGIN_LEFT, RIGHT_X, cursorY - prom1H);
 
     const txtProm1 = "CALIFICACIÓN PROMEDIO FINAL 1";
-    page.drawText(txtProm1, { x: cX[3] - fontBold.widthOfTextAtSize(txtProm1, 8) - 10, y: cursorY - 11, size: 8, font: fontBold, color: COLOR_TEXT });
+    const wProm1 = fontBold.widthOfTextAtSize(txtProm1, 7.5);
+    page.drawText(txtProm1, { x: cX[3] - wProm1 - 12, y: cursorY - 11, size: 7.5, font: fontBold, color: COLOR_TEXT });
 
     const valProm1 = formatEnteroEstricto(d.promedio_final_1);
-    page.drawText(valProm1, { x: cX[4] + (colW[4] / 2) - (fontBold.widthOfTextAtSize(valProm1, 8.5) / 2), y: cursorY - 11, size: 8.5, font: fontBold, color: COLOR_TEXT });
+    const wValP1 = fontBold.widthOfTextAtSize(valProm1, 8.5);
+    page.drawText(valProm1, { x: cX[4] + (colW[4] / 2) - (wValP1 / 2), y: cursorY - 11, size: 8.5, font: fontBold, color: COLOR_TEXT });
 
     vLine(page, cX[0], cursorY, cursorY - prom1H);
     vLine(page, cX[4], cursorY, cursorY - prom1H);
@@ -390,7 +394,7 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
       const indLines = wrapText(f.indicador, font, 7.5, colW[2] - 8);
       const actLines = wrapText(f.actividad, fontBold, 7.5, colW[1] - 8);
 
-      const rH = Math.max(24, actLines.length * 8.5 + 8, indLines.length * 8.5 + 8);
+      const rH = Math.max(22, actLines.length * 8.5 + 8, indLines.length * 8.5 + 8);
       const rowTopY = cursorY;
 
       if (idx === filasSoc.length - 1) {
@@ -414,7 +418,7 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
       page.drawText(f.instrumento, { x: cX[3] + (colW[3] / 2) - (font.widthOfTextAtSize(f.instrumento, 7.5) / 2), y: rowTopY - (rH / 2) - 3, size: 7.5, font, color: COLOR_TEXT });
       page.drawText(f.puntaje, { x: cX[4] + (colW[4] / 2) - (fontBold.widthOfTextAtSize(f.puntaje, 8) / 2), y: rowTopY - (rH / 2) - 3, size: 8, font: fontBold, color: COLOR_TEXT });
 
-      for (let c = 1; c <= 5; c++) vLine(page, cX[c], rowTopY, rowTopY - rH);
+      for (let c = 1; c < cX.length; c++) vLine(page, cX[c], rowTopY, rowTopY - rH);
 
       cursorY -= rH;
     });
@@ -423,118 +427,84 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
     const txtSoc = "Socialización";
     page.drawText(txtSoc, { x: cX[0] + (colW[0] / 2) - (fontBold.widthOfTextAtSize(txtSoc, 8) / 2), y: socYStart - ((socYStart - cursorY) / 2) - 3, size: 8, font: fontBold, color: COLOR_TEXT });
 
+    // CALIFICACIÓN PROMEDIO FINAL 2
     const prom2H = 16;
+    fillRect(page, cX[0], cursorY, CONTENT_WIDTH, prom2H, COLOR_TABLE_HEADER);
     hLine(page, MARGIN_LEFT, RIGHT_X, cursorY - prom2H);
 
     const txtProm2 = "CALIFICACIÓN PROMEDIO FINAL 2";
-    page.drawText(txtProm2, { x: cX[3] - fontBold.widthOfTextAtSize(txtProm2, 8) - 10, y: cursorY - 11, size: 8, font: fontBold, color: COLOR_TEXT });
+    const wProm2 = fontBold.widthOfTextAtSize(txtProm2, 7.5);
+    page.drawText(txtProm2, { x: cX[3] - wProm2 - 12, y: cursorY - 11, size: 7.5, font: fontBold, color: COLOR_TEXT });
 
     const valProm2 = formatEnteroEstricto(d.promedio_final_2);
-    page.drawText(valProm2, { x: cX[4] + (colW[4] / 2) - (fontBold.widthOfTextAtSize(valProm2, 8.5) / 2), y: cursorY - 11, size: 8.5, font: fontBold, color: COLOR_TEXT });
+    const wValP2 = fontBold.widthOfTextAtSize(valProm2, 8.5);
+    page.drawText(valProm2, { x: cX[4] + (colW[4] / 2) - (wValP2 / 2), y: cursorY - 11, size: 8.5, font: fontBold, color: COLOR_TEXT });
 
     vLine(page, cX[0], cursorY, cursorY - prom2H);
     vLine(page, cX[4], cursorY, cursorY - prom2H);
     vLine(page, cX[5], cursorY, cursorY - prom2H);
 
-    cursorY -= prom2H;
+    cursorY -= prom2H + 15;
 
-    const notasReglas = [
-      "• Todos los instrumentos aplicados deben ser evaluados sobre 100 puntos.",
-      "• La CALIFICACIÓN FINAL 1 es igual al promedio de las calificaciones obtenidas en la etapa de Planificación y Organización, y Ejecución.",
-      "• La nota final alcanzada sobre 100 puntos, debe ser incorporado al SIFMWEB.",
-      "• De la CALIFICACIÓN FINAL 1, el SIFMWEB pondera la calificación al 20% y lo replica en todas las UF semestralizadas del 1er Semestre.",
-      "• La calificación FICHA C-1 (Documento del Trabajo de Grado) se registra en el SIFMWEB donde se pondera la calificación al 20% y se replica en todas las UF semestralizadas del 2do semestre.",
-      "• La CALIFICACIÓN PROMEDIO FINAL 2 (Ficha C-1 y Ficha C-2) se registra en el SIFMWEB posterior a la socialización de trabajo de grado."
-    ];
-
-    let totalNotasH = 10;
-    const parsedNotas = notasReglas.map(n => {
-      const lines = wrapText(n, font, 7, CONTENT_WIDTH - 12);
-      totalNotasH += lines.length * 8 + 2;
-      return lines;
-    });
-
-    const boxTopY = cursorY;
-    hLine(page, MARGIN_LEFT, RIGHT_X, boxTopY - totalNotasH);
-
-    let yNote = boxTopY - 9;
-    parsedNotas.forEach(lines => {
-      lines.forEach(l => {
-        page.drawText(l, { x: MARGIN_LEFT + 6, y: yNote, size: 7, font, color: COLOR_TEXT });
-        yNote -= 8;
-      });
-      yNote -= 2;
-    });
-
-    vLine(page, MARGIN_LEFT, boxTopY, boxTopY - totalNotasH);
-    vLine(page, RIGHT_X, boxTopY, boxTopY - totalNotasH);
-
-    cursorY = boxTopY - totalNotasH - 18;
-
+    // 5. LUGAR Y FECHA
     const ciudad = d.lugar_ciudad || "El Alto";
     const dia = d.dia || "21";
     const mes = d.mes || "septiembre";
     const ano = String(d.ano || "2026").slice(0, 4);
 
-    const txtLugarLabel = "Lugar y fecha: ";
-    const txtLugarValor = `${ciudad}, ${dia} de ${mes} de ${ano}`;
+    const txtLF = `Lugar y fecha: ${ciudad}, ${dia} de ${mes} de ${ano}`;
+    const wLF = font.widthOfTextAtSize(txtLF, 8.5);
+    page.drawText(txtLF, { x: CONTENT_CENTER_X - wLF / 2, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
 
-    const wLabelLF = font.widthOfTextAtSize(txtLugarLabel, 8.5);
-    const wValLF = fontBold.widthOfTextAtSize(txtLugarValor, 8.5);
-    const totalLFWidth = wLabelLF + wValLF;
-    const startX_LF = CONTENT_CENTER_X - (totalLFWidth / 2);
+    cursorY -= 14;
+    page.drawText("Fuente: Archivos de Coordinación Académica IEPC-PEC", { x: MARGIN_LEFT, y: cursorY, size: 7.5, font, color: COLOR_TEXT });
 
-    page.drawText(txtLugarLabel, { x: startX_LF, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
-    page.drawText(txtLugarValor, { x: startX_LF + wLabelLF, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
-    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2.5);
+    cursorY -= 18;
 
-    cursorY -= 35;
-
-    const sigColWidth = CONTENT_WIDTH / 2;
-    const sigLineW = 150;
-
-    const firmas = [
-      { f1: "DOCENTE TUTOR/A", f2: "ACOMPAÑANTE", xCenter: MARGIN_LEFT + sigColWidth * 0.5 },
-      { f1: "Vo.Bo. COORDINADOR/A IEPC-PEC", f2: "", xCenter: MARGIN_LEFT + sigColWidth * 1.5 }
+    // 6. PÁRRAFO DE APROBACIÓN FINAL JUSTIFICADO
+    const tokensAprob = [
+      ...plainTokens("Por lo tanto, el/la estudiante cuenta con la ", font),
+      ...boldTokens("APROBACIÓN", fontBold),
+      ...plainTokens(` en la Investigación Educativa y Producción de Conocimientos - Práctica Educativa Comunitaria (IEPC - PEC) en fase anual de la gestión académica ${ano}, que cursa en los archivos institucionales.`, font)
     ];
 
-    firmas.forEach((f) => {
-      const lineStartX = f.xCenter - sigLineW / 2;
-      const lineEndX = f.xCenter + sigLineW / 2;
-
-      drawDottedLine(page, lineStartX, lineEndX, cursorY);
-
-      const wL1 = fontBold.widthOfTextAtSize(f.f1, 8);
-      page.drawText(f.f1, {
-        x: f.xCenter - wL1 / 2,
-        y: cursorY - 11,
-        size: 8,
-        font: fontBold,
-        color: COLOR_TEXT,
-      });
-
-      if (f.f2) {
-        const wL2 = fontBold.widthOfTextAtSize(f.f2, 8);
-        page.drawText(f.f2, {
-          x: f.xCenter - wL2 / 2,
-          y: cursorY - 20,
-          size: 8,
-          font: fontBold,
-          color: COLOR_TEXT,
-        });
-      }
+    cursorY = drawJustifiedParagraph(page, tokensAprob, {
+      x: MARGIN_LEFT,
+      y: cursorY,
+      maxWidth: CONTENT_WIDTH,
+      fontSize: 8.5,
+      lineHeight: 11,
+      spaceFont: font
     });
 
-    // -------------------------------------------------------------------------
-    // CÓDIGO PDF417 ELEVADO Y SIN TEXTO ADICIONAL
-    // -------------------------------------------------------------------------
+    cursorY -= 12;
+
+    // 7. PIE Y FIRMA
+    page.drawText("Es cuanto se certifica para fines consiguientes del(a) interesado(a).", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
+
+    const fechaActualStr = `El Alto, ${new Date().getDate()} de ${new Date().toLocaleString("es-BO", { month: "long" })} de ${new Date().getFullYear()}`;
+    page.drawText(fechaActualStr, { x: MARGIN_LEFT + CONTENT_WIDTH - font.widthOfTextAtSize(fechaActualStr, 8.5), y: cursorY, size: 8.5, font, color: COLOR_TEXT });
+
+    cursorY -= 50;
+
+    const sigLineW = 160;
+    const startSigX = CONTENT_CENTER_X - sigLineW / 2;
+    const endSigX = CONTENT_CENTER_X + sigLineW / 2;
+
+    page.drawLine({ start: { x: startSigX, y: cursorY }, end: { x: endSigX, y: cursorY }, thickness: 0.8, dashArray: [1.5, 1.5], color: COLOR_TEXT });
+
+    page.drawText("Lic. José Paucar Caya", { x: CONTENT_CENTER_X - fontBold.widthOfTextAtSize("Lic. José Paucar Caya", 8.5) / 2, y: cursorY - 10, size: 8.5, font: fontBold, color: COLOR_TEXT });
+    page.drawText("COORDINADOR ACADÉMICO IEPC-PEC", { x: CONTENT_CENTER_X - fontBold.widthOfTextAtSize("COORDINADOR ACADÉMICO IEPC-PEC", 7.5) / 2, y: cursorY - 19, size: 7.5, font: fontBold, color: COLOR_TEXT });
+    page.drawText("E.S.F.M.T.H. EL ALTO", { x: CONTENT_CENTER_X - fontBold.widthOfTextAtSize("E.S.F.M.T.H. EL ALTO", 7.5) / 2, y: cursorY - 27, size: 7.5, font: fontBold, color: COLOR_TEXT });
+
+    // CÓDIGO PDF417 BLOCKCHAIN EN EL LADO INFERIOR IZQUIERDO
     const pdf417X = MARGIN_LEFT;
-    const pdf417Y = 100; // Se sube la posición Y para alinearlo con el resto del pie
-    const pdf417Width = 200;
-    const pdf417Height = 45;
+    const pdf417Y = 70;
+    const pdf417Width = 180;
+    const pdf417Height = 40;
 
     const txHashValido = txHash || hashLocal || estudianteId;
-    const pdf417TextData = `ESTUDIANTE:${nombreEstudianteStr}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+    const pdf417TextData = `ESTUDIANTE:${nombreEstudiante}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
 
     const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
 
@@ -550,14 +520,13 @@ export const imprimirCentralizador5toAno = async (estudianteId, blockchainData =
 
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: 'application/pdf' });
-    const blobUrl = window.URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(blob);
 
     window.open(blobUrl, '_blank');
-
     return { success: true };
 
   } catch (error) {
-    console.error("Error al generar PDF del Centralizador (5to Año):", error);
+    console.error("Error al generar PDF del Certificado de 5to Año:", error);
     return {
       success: false,
       message: `Error al procesar el documento PDF: ${error.message}`

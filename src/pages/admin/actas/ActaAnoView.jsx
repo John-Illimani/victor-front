@@ -8,11 +8,19 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  Info
+  Info,
+  ShieldCheck
 } from "lucide-react";
 import { actaService } from "../../../services/actaService";
+import { BlockchainResultModal } from "../../../components/modals/BlockchainResultModal";
+import { blockchainService } from "../../../services/blockchainService";
+import { imprimirCentralizador1erAno } from "../../../utils/fichas/1año/centralizador1AnoPdfGenerator";
+import { imprimirCentralizador2doAno } from "../../../utils/fichas/2año/centralizador2AnoPdfGenerator";
+import { imprimirCentralizador3erAno } from "../../../utils/fichas/3año/centralizador3AnoPdfGenerator";
+import { imprimirCentralizador4toAno } from "../../../utils/fichas/4año/centralizador4AnoPdfGenerator";
+import { imprimirCentralizador5toAno } from "../../../utils/fichas/5año/centralizador5AnoPdfGenerator";
 
-// IMPORTACIÓN EXCLUSIVA DE CONTROLADORES
+// IMPORTACIÓN EXCLUSIVA DE CONTROLADORES POR AÑO
 import { FICHAS_1ER_ANO, ejecutarImpresion1erAno } from "../../../controllers/fichas/fichas1AnoController";
 import { FICHAS_2DO_ANO, ejecutarImpresion2doAno } from "../../../controllers/fichas/fichas2AnoController";
 import { FICHAS_3ER_ANO, ejecutarImpresion3erAno } from "../../../controllers/fichas/fichas3AnoController";
@@ -29,7 +37,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
   const [selectedActa, setSelectedActa] = useState(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
-  // Modal de Notificaciones UI
+  // Modal de Notificaciones UI Generales
   const [systemModal, setSystemModal] = useState({
     show: false,
     title: "",
@@ -37,7 +45,13 @@ export const ActaAnoView = ({ gestion, ano }) => {
     type: "info"
   });
 
-  // Mapeo dinámico de fichas por año
+  // Modal Suave de Respuesta Blockchain
+  const [modalBlockchain, setModalBlockchain] = useState({
+    show: false,
+    data: null,
+    estudianteId: null
+  });
+
   const getFichasByAno = (anoFormacion) => {
     const a = (anoFormacion || ano || "").toString().toUpperCase();
     if (a.includes("1") || a.includes("PRIMER")) return FICHAS_1ER_ANO;
@@ -78,22 +92,70 @@ export const ActaAnoView = ({ gestion, ano }) => {
     setShowPrintModal(true);
   };
 
-  // Delegación de impresión directa hacia el controlador del año
   const handleImprimirFichaEspecifica = async (ficha) => {
     if (!selectedActa) return;
 
     setGeneratingPdf(true);
-    let res = { success: false, message: "" };
     const a = (selectedActa.ano_formacion || ano || "").toString().toUpperCase();
     const id = selectedActa.estudiante_id;
 
-    if (a.includes("1") || a.includes("PRIMER")) {
+    const es1erAno = a.includes("1") || a.includes("PRIMER");
+    const es2doAno = a.includes("2") || a.includes("SEGUNDO");
+    const es3erAno = a.includes("3") || a.includes("TERCER");
+    const es4toAno = a.includes("4") || a.includes("CUARTO");
+    const es5toAno = a.includes("5") || a.includes("QUINTO") || (!es1erAno && !es2doAno && !es3erAno && !es4toAno);
+
+    // 1. CASO ESPECIAL: Centralizadores de 1ro, 2do, 3ro, 4to y 5to Año con Registro Blockchain
+    if ((es1erAno || es2doAno || es3erAno || es4toAno || es5toAno) && ficha.codigo === "CENTRALIZADOR") {
+      try {
+        let resCert;
+        if (es1erAno) {
+          resCert = await blockchainService.certificar1erAno(id);
+        } else if (es2doAno) {
+          resCert = await blockchainService.certificar2doAno(id);
+        } else if (es3erAno) {
+          resCert = await blockchainService.certificar3erAno(id);
+        } else if (es4toAno) {
+          resCert = await blockchainService.certificar4toAno(id);
+        } else {
+          resCert = await blockchainService.certificar5toAno(id);
+        }
+
+        setGeneratingPdf(false);
+        setModalBlockchain({
+          show: true,
+          data: resCert,
+          estudianteId: id
+        });
+      } catch (errBlockchain) {
+        setGeneratingPdf(false);
+        if (errBlockchain?.tx_hash || errBlockchain?.hash_local) {
+          setModalBlockchain({
+            show: true,
+            data: errBlockchain,
+            estudianteId: id
+          });
+        } else {
+          setSystemModal({
+            show: true,
+            title: "Error en Blockchain",
+            message: errBlockchain?.message || "No se pudo realizar la certificación Web3.",
+            type: "error"
+          });
+        }
+      }
+      return;
+    }
+
+    // 2. CASO TRADICIONAL: Fichas normales
+    let res = { success: false, message: "" };
+    if (es1erAno) {
       res = await ejecutarImpresion1erAno(ficha.codigo, id);
-    } else if (a.includes("2") || a.includes("SEGUNDO")) {
+    } else if (es2doAno) {
       res = await ejecutarImpresion2doAno(ficha.codigo, id);
-    } else if (a.includes("3") || a.includes("TERCER")) {
+    } else if (es3erAno) {
       res = await ejecutarImpresion3erAno(ficha.codigo, id);
-    } else if (a.includes("4") || a.includes("CUARTO")) {
+    } else if (es4toAno) {
       res = await ejecutarImpresion4toAno(ficha.codigo, id);
     } else {
       res = await ejecutarImpresion5toAno(ficha.codigo, id);
@@ -105,10 +167,33 @@ export const ActaAnoView = ({ gestion, ano }) => {
       setSystemModal({
         show: true,
         title: "Información del Sistema",
-        message: res.message,
-        type: res.message.includes("configurada") ? "info" : "error"
+        message: res.message || "No se pudo generar el documento solicitado.",
+        type: res.message?.includes("configurada") ? "info" : "error"
       });
     }
+  };
+
+  // Confirmación e Impresión del Centralizador con Blockchain por Año
+  const handleConfirmarImpresionPdf = async () => {
+    if (!modalBlockchain.estudianteId) return;
+
+    setGeneratingPdf(true);
+    const a = (selectedActa?.ano_formacion || ano || "").toString().toUpperCase();
+
+    if (a.includes("1") || a.includes("PRIMER")) {
+      await imprimirCentralizador1erAno(modalBlockchain.estudianteId, modalBlockchain.data);
+    } else if (a.includes("2") || a.includes("SEGUNDO")) {
+      await imprimirCentralizador2doAno(modalBlockchain.estudianteId, modalBlockchain.data);
+    } else if (a.includes("3") || a.includes("TERCER")) {
+      await imprimirCentralizador3erAno(modalBlockchain.estudianteId, modalBlockchain.data);
+    } else if (a.includes("4") || a.includes("CUARTO")) {
+      await imprimirCentralizador4toAno(modalBlockchain.estudianteId, modalBlockchain.data);
+    } else {
+      await imprimirCentralizador5toAno(modalBlockchain.estudianteId, modalBlockchain.data);
+    }
+
+    setGeneratingPdf(false);
+    setModalBlockchain({ show: false, data: null, estudianteId: null });
   };
 
   return (
@@ -125,7 +210,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Consola de administración e impresión de fichas oficiales para {ano}º año.
+              Consola de administración, impresión de fichas e inmutabilidad Web3.
             </p>
           </div>
         </div>
@@ -225,7 +310,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
               </h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-5">
+            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-4">
               <div>
                 <span className="font-bold text-[#801B28] block">Nombre:</span>
                 <span className="font-extrabold text-slate-900 block">
@@ -252,6 +337,8 @@ export const ActaAnoView = ({ gestion, ano }) => {
               </div>
             </div>
 
+           
+
             <h3 className="text-xs font-black text-slate-900 mb-3 uppercase flex items-center gap-2">
               <FileText className="text-[#801B28]" size={16} /> ACTAS Y FICHAS DISPONIBLES
             </h3>
@@ -269,7 +356,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white font-extrabold hover:bg-slate-800 text-[11px] cursor-pointer transition-all shrink-0 shadow-sm disabled:opacity-50"
                   >
                     {generatingPdf ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-                    Imprimir
+                    {generatingPdf ? "Procesando..." : "Imprimir"}
                   </button>
                 </div>
               ))}
@@ -287,11 +374,18 @@ export const ActaAnoView = ({ gestion, ano }) => {
         </div>
       )}
 
+      {/* MODAL SUAVE: RESULTADO BLOCKCHAIN CON CONFIRMACIÓN */}
+      <BlockchainResultModal
+        show={modalBlockchain.show}
+        onClose={() => setModalBlockchain({ show: false, data: null, estudianteId: null })}
+        onConfirmPrint={handleConfirmarImpresionPdf}
+        data={modalBlockchain.data}
+      />
+
       {/* MODAL: NOTIFICACIONES DEL SISTEMA */}
       {systemModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 text-center space-y-4">
-            
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100">
               {systemModal.type === 'error' && <AlertTriangle size={28} className="text-rose-600" />}
               {systemModal.type === 'success' && <CheckCircle2 size={28} className="text-emerald-600" />}

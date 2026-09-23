@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { PDF417 } from "pdf417-generator";
 import { centralizador1erAnoService } from "../../../services/fichas/1año/centralizador1erAnoService";
 
 const COLOR_TEXT = rgb(0, 0, 0);
@@ -27,7 +28,6 @@ function wrapText(text, font, fontSize, maxWidth) {
   return lines;
 }
 
-// Formateo de notas de fichas
 function formatNota(val) {
   if (val === undefined || val === null || val === "") return "0";
   const num = parseFloat(val);
@@ -35,7 +35,6 @@ function formatNota(val) {
   return num % 1 === 0 ? String(Math.round(num)) : String(num);
 }
 
-// Redondeo del promedio numeral a entero
 function formatPromedioRedondeado(val) {
   if (val === undefined || val === null || val === "") return "0";
   const num = parseFloat(val);
@@ -43,7 +42,6 @@ function formatPromedioRedondeado(val) {
   return String(Math.round(num));
 }
 
-// Promedio literal únicamente entero
 function numeroALiteralEntero(num) {
   const n = Math.round(parseFloat(num) || 0);
   if (n <= 0) return "CERO";
@@ -67,7 +65,20 @@ function numeroALiteralEntero(num) {
   return u === 0 ? decenas[d] : `${decenas[d]} Y ${unidades[u]}`;
 }
 
-export const imprimirCentralizador1erAno = async (estudianteId) => {
+const generarPdf417DataUrl = (texto) => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    try {
+      PDF417.draw(texto, canvas, 2, 2);
+      resolve(canvas.toDataURL('image/png'));
+    } catch (e) {
+      console.error("Error al renderizar código PDF417:", e);
+      resolve(null);
+    }
+  });
+};
+
+export const imprimirCentralizador1erAno = async (estudianteId, blockchainData = {}) => {
   try {
     const response = await centralizador1erAnoService.getByEstudiante(estudianteId);
 
@@ -76,6 +87,10 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
     }
 
     const d = response.datos;
+
+    const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
+    const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
+
     const urlPlantilla = "/pdf/1ano/plantilla.pdf";
     const resFetch = await fetch(urlPlantilla);
 
@@ -88,10 +103,9 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
     pdfDoc.registerFontkit(fontkit);
 
     const page = pdfDoc.getPages()[0];
-    page.setSize(612, 792); // Tamaño Carta
+    page.setSize(612, 792); 
     const pageWidth = 612;
 
-    // Carga de fuentes alternativas o respaldo estándar
     let fontCalibri, fontCalibriBold, fontArialBold;
     try {
       const resCalibri = await fetch("/fonts/calibri.ttf");
@@ -106,13 +120,11 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
       const arialBoldBytes = await resArialBold.arrayBuffer();
       fontArialBold = await pdfDoc.embedFont(arialBoldBytes);
     } catch (e) {
-      // Si no existen los archivos en /fonts/, se usan fuentes estándar
       fontCalibri = await pdfDoc.embedFont(StandardFonts.Helvetica);
       fontCalibriBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       fontArialBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    // Margenes exactos: 3 cm (85.04 pt) e 1.81 cm (51.31 pt)
     const MARGIN_LEFT = 85.04;  
     const MARGIN_RIGHT = 51.31; 
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); 
@@ -120,7 +132,7 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
 
     let cursorY = 665;
 
-    // TÍTULO EN ARIAL BOLD 13 PT
+    // TÍTULO
     const t1 = "CUADRO CENTRALIZADOR";
     const t1W = fontArialBold.widthOfTextAtSize(t1, 13);
     page.drawText(t1, { x: CONTENT_CENTER_X - t1W / 2, y: cursorY, size: 13, font: fontArialBold, color: COLOR_TITLE });
@@ -136,32 +148,33 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
 
     cursorY -= 4;
 
-    // DATOS REFERENCIALES EN CALIBRI CON LÍNEAS PUNTEADAS DEBAJO
+    // DATOS REFERENCIALES
     const refTitle = "DATOS REFERENCIALES DEL ESTUDIANTE:";
     page.drawText(refTitle, { x: MARGIN_LEFT, y: cursorY, size: 9.5, font: fontCalibriBold, color: COLOR_TITLE });
     cursorY -= 16;
 
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Límite estricto del margen derecho
+
     const drawReferentialField = (label, value) => {
-      page.drawText(label, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font: fontCalibri, color: COLOR_TEXT });
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 9, font: fontCalibri, color: COLOR_TEXT });
       const labelW = fontCalibri.widthOfTextAtSize(label, 9);
-      const valX = MARGIN_LEFT + 15 + labelW;
+      const valX = MARGIN_LEFT + labelW;
       
+      // 1. DIBUJAR LA LÍNEA PUNTEADA DE FONDO DESDE EL INICIO DEL CAMPO HASTA EL MARGEN DERECHO
+      page.drawLine({
+        start: { x: valX, y: cursorY - 1 },
+        end: { x: maxLineRight, y: cursorY - 1 },
+        thickness: 0.8,
+        dashArray: [1, 1.5], // Patrón de puntitos finos
+        color: COLOR_TEXT,
+      });
+
+      // 2. DIBUJAR EL TEXTO DEL CAMPO SOBREPUESTO EN NEGRITA
       const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
       if (valText) {
         page.drawText(valText, { x: valX, y: cursorY, size: 9, font: fontCalibriBold, color: COLOR_TEXT });
       }
-      
-      const valW = fontCalibriBold.widthOfTextAtSize(valText, 9);
-      const lineEndX = valX + Math.max(valW, 140);
 
-      // Línea punteada justo debajo del texto
-      page.drawLine({ 
-        start: { x: valX, y: cursorY - 2 }, 
-        end: { x: lineEndX, y: cursorY - 2 }, 
-        thickness: 0.8, 
-        dashArray: [1.5, 1.5], 
-        color: COLOR_TEXT 
-      });
       cursorY -= 15;
     };
 
@@ -179,7 +192,6 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
     const headerHeight = 28;
     page.drawRectangle({ x: MARGIN_LEFT, y: tableTop - headerHeight, width: CONTENT_WIDTH, height: headerHeight, color: COLOR_TABLE_HEADER });
 
-    // ENCABEZADOS DE COLUMNA EN TAMAÑO 12 PT
     const headers = [
       { text: "FICHAS", x: colX[0] + colWidths[0] / 2 },
       { text: "PUNTAJE", x: colX[1] + colWidths[1] / 2 },
@@ -204,7 +216,6 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
     let rowY = tableTop - headerHeight;
     const rowHeight = 22;
 
-    // CONTENIDO EN TAMAÑO 9 PT
     filasFichas.forEach((fila) => {
       const rowBottomY = rowY - rowHeight;
 
@@ -218,7 +229,7 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
       rowY = rowBottomY;
     });
 
-    // PROMEDIO FINAL REDONDEADO EN 9 PT
+    // PROMEDIO FINAL
     const promFinalY = rowY - rowHeight;
     const promLabel = "PROMEDIO FINAL";
     const promLabelW = fontCalibriBold.widthOfTextAtSize(promLabel, 9);
@@ -231,7 +242,7 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
 
     page.drawLine({ start: { x: MARGIN_LEFT, y: promFinalY }, end: { x: colX[2], y: promFinalY }, thickness: 0.8, color: COLOR_BORDER });
 
-    // PROMEDIO LITERAL ENTERO EN 9 PT
+    // PROMEDIO LITERAL
     const litHeight = 35;
     const tableBottom = promFinalY - litHeight;
 
@@ -248,7 +259,7 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
 
     cursorY = tableBottom - 35;
 
-    // LUGAR Y FECHA DE EMISIÓN CENTRADO AL MEDIO CON LÍNEA PUNTEADA DEBAJO
+    // FECHA
     const lblFecha = "Lugar y fecha: ";
     const valFecha = `${d.lugar_ciudad || "El Alto"}, ${d.dia || "17"} de ${d.mes || "septiembre"} de ${d.ano || "2026"}`;
     
@@ -273,7 +284,7 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
 
     cursorY -= 50;
 
-    // FIRMAS CENTRADAS EN LA PARTE INFERIOR
+    // FIRMAS
     const sigWidth = 160;
     const sig1X = MARGIN_LEFT + 30;
     const sig2X = MARGIN_LEFT + CONTENT_WIDTH - sigWidth - 30;
@@ -287,6 +298,27 @@ export const imprimirCentralizador1erAno = async (estudianteId) => {
     const sigLbl2 = "Docente Acompañante ESFM/UA";
     const sigLbl2W = fontCalibri.widthOfTextAtSize(sigLbl2, 9);
     page.drawText(sigLbl2, { x: sig2X + sigWidth / 2 - sigLbl2W / 2, y: cursorY - 14, size: 9, font: fontCalibri, color: COLOR_TEXT });
+
+    // CÓDIGO PDF417 BLOCKCHAIN
+    const pdf417X = MARGIN_LEFT;
+    const pdf417Y = 100;
+    const pdf417Width = 200;
+    const pdf417Height = 45;
+
+    const txHashValido = txHash || hashLocal || estudianteId;
+    const pdf417TextData = `ESTUDIANTE:${d.apellidos_nombres || ''}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+
+    const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
+
+    if (pdf417DataUrl) {
+      const pdf417Image = await pdfDoc.embedPng(pdf417DataUrl);
+      page.drawImage(pdf417Image, {
+        x: pdf417X,
+        y: pdf417Y,
+        width: pdf417Width,
+        height: pdf417Height
+      });
+    }
 
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: "application/pdf" });

@@ -87,16 +87,16 @@ function fillRect(page, x, yTop, w, h, color) {
 }
 
 function campoPunteado(page, { label, value, x, y, endX, minLine = 50, font, fontBold, size = 9, forceUpper = true }) {
-  page.drawText(label, { x, y, size, font: fontBold, color: COLOR_TEXT });
-  const valueX = x + fontBold.widthOfTextAtSize(label, size);
+  page.drawText(label, { x, y, size, font, color: COLOR_TEXT });
+  const valueX = x + font.widthOfTextAtSize(label, size);
   let val = String(value ?? "").trim();
   if (forceUpper) val = val.toUpperCase();
 
   if (val) {
-    page.drawText(val, { x: valueX, y, size, font, color: COLOR_TEXT });
+    page.drawText(val, { x: valueX, y, size, font: fontBold, color: COLOR_TEXT });
   }
 
-  const valW = val ? font.widthOfTextAtSize(val, size) : 0;
+  const valW = val ? fontBold.widthOfTextAtSize(val, size) : 0;
   const lineEnd = endX ?? (valW > 0 ? valueX + valW : valueX + minLine);
 
   drawDottedLine(page, valueX, lineEnd, y - 1.5);

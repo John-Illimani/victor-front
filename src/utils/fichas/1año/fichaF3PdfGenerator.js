@@ -164,10 +164,10 @@ export const imprimirFichaF3_1erAno = async (estudianteId) => {
 
     const maxLineRight = MARGIN_LEFT + CONTENT_WIDTH;
 
-    const drawReferentialField = (label, value) => {
-      page.drawText(label, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font, color: COLOR_TEXT });
+    const drawReferentialField = (label, value, customFixedWidth = null) => {
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
       const labelW = font.widthOfTextAtSize(label, 9);
-      const valX = MARGIN_LEFT + 15 + labelW;
+      const valX = MARGIN_LEFT + labelW;
       
       const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
       if (valText) {
@@ -175,20 +175,21 @@ export const imprimirFichaF3_1erAno = async (estudianteId) => {
       }
       
       const valW = fontBold.widthOfTextAtSize(valText, 9);
-      const lineEndX = valX + Math.max(valW, 140);
+      const lineEndX = customFixedWidth ? valX + customFixedWidth : Math.max(valX + valW + 20, maxLineRight);
 
-      page.drawLine({ 
-        start: { x: valX, y: cursorY - 2 }, 
-        end: { x: lineEndX, y: cursorY - 2 }, 
-        thickness: 0.8, 
-        dashArray: [1.5, 1.5], 
-        color: COLOR_TEXT 
-      });
+      // Dibujar puntos/línea punteada debajo del texto dinámicamente hasta el borde derecho
+      let currentX = valX;
+      const dotPatternWidth = 3; // Espaciado de los puntos
+      while (currentX < lineEndX) {
+        page.drawText(".", { x: currentX, y: cursorY - 1, size: 9, font, color: COLOR_TEXT });
+        currentX += dotPatternWidth;
+      }
+
       cursorY -= 15;
     };
 
-    drawReferentialField("Apellidos y nombres: ", d.apellidos_nombres);
-    drawReferentialField("ESFM/UA: ", d.esfm_ua || "ESFM Simón Bolívar / UA El Alto");
+    drawReferentialField("Apellidos y Nombres del(a) Estudiante: ", d.apellidos_nombres);
+    drawReferentialField("ESFM/UA: ", d.esfm_ua || "TECNOLÓGICO Y HUMANÍSTICO EL ALTO");
     drawReferentialField("Especialidad: ", d.especialidad);
 
     cursorY -= 15;

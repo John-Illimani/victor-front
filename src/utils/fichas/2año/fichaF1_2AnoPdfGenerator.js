@@ -154,10 +154,11 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const MARGIN_LEFT = 85.04;  // 3 cm exactos[cite: 8]
-    const MARGIN_RIGHT = 51.31; // 1.81 cm exactos[cite: 8]
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt[cite: 8]
+    const MARGIN_LEFT = 85.04;  // 3 cm exactos
+    const MARGIN_RIGHT = 51.31; // 1.81 cm exactos
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
+    const maxLineRight = pageWidth - MARGIN_RIGHT;
 
     let cursorY = 675;
 
@@ -223,56 +224,62 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
     });
     cursorY -= 16;
 
+    // Nombres y Apellidos
     const lblNom = "Nombres y Apellidos: ";
     page.drawText(lblNom, { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblNomW = font.widthOfTextAtSize(lblNom, 9);
     const valNomX = MARGIN_LEFT + lblNomW;
+
+    page.drawLine({
+      start: { x: valNomX, y: cursorY - 1 },
+      end: { x: maxLineRight, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valNom = (d.apellidos_nombres || "").toUpperCase();
     if (valNom.trim()) {
       page.drawText(valNom, { x: valNomX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    const valNomW = fontBold.widthOfTextAtSize(valNom, 9);
-    page.drawLine({
-      start: { x: valNomX, y: cursorY - 2 },
-      end: { x: valNomX + Math.max(valNomW, 350), y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
     cursorY -= 16;
 
+    // ESFM/UA y Especialidad
     const lblEsfm = "ESFM/UA: ";
     page.drawText(lblEsfm, { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblEsfmW = font.widthOfTextAtSize(lblEsfm, 9);
     const valEsfmX = MARGIN_LEFT + lblEsfmW;
-    const valEsfm = (d.esfm_ua || "ESFM Simón Bolívar / UA El Alto").toUpperCase();
-    page.drawText(valEsfm, { x: valEsfmX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
-    const valEsfmW = fontBold.widthOfTextAtSize(valEsfm, 9);
+
     page.drawLine({
-      start: { x: valEsfmX, y: cursorY - 2 },
-      end: { x: valEsfmX + Math.max(valEsfmW, 160), y: cursorY - 2 },
+      start: { x: valEsfmX, y: cursorY - 1 },
+      end: { x: MARGIN_LEFT + 220, y: cursorY - 1 },
       thickness: 0.8,
-      dashArray: [1.5, 1.5],
+      dashArray: [1, 1.5],
       color: COLOR_TEXT,
     });
 
-    const lblEspX = valEsfmX + Math.max(valEsfmW, 160) + 15;
+    const valEsfm = (d.esfm_ua || "ESFM Simón Bolívar / UA El Alto").toUpperCase();
+    page.drawText(valEsfm, { x: valEsfmX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+
+    const lblEspX = MARGIN_LEFT + 230;
     const lblEsp = "Especialidad: ";
     page.drawText(lblEsp, { x: lblEspX, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblEspW = font.widthOfTextAtSize(lblEsp, 9);
     const valEspX = lblEspX + lblEspW;
+
+    page.drawLine({
+      start: { x: valEspX, y: cursorY - 1 },
+      end: { x: maxLineRight, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valEsp = (d.especialidad || "").toUpperCase();
     if (valEsp) {
       page.drawText(valEsp, { x: valEspX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    const valEspW = fontBold.widthOfTextAtSize(valEsp, 9);
-    page.drawLine({
-      start: { x: valEspX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
+
     cursorY -= 20;
 
     // =========================================================================
@@ -291,7 +298,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
     const topHeaderHeight = 22;
     const subHeaderHeight = 26;
 
-    // 4.1 Encabezado superior unificado (ETAPA PREPARATORIA)[cite: 10, 13]
+    // 4.1 Encabezado superior unificado (ETAPA PREPARATORIA)
     page.drawRectangle({
       x: MARGIN_LEFT,
       y: tableTop - topHeaderHeight,
@@ -309,7 +316,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
       color: rgb(1, 1, 1),
     });
 
-    // 4.2 Sub-encabezados de columnas[cite: 10, 13]
+    // 4.2 Sub-encabezados de columnas
     const subHeaderY = tableTop - topHeaderHeight;
     page.drawRectangle({
       x: MARGIN_LEFT,
@@ -371,7 +378,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
     const cellPadding = 6;
     const lineHeight = 12;
 
-    // 4.3 Filas de Actividades e Indicadores[cite: 8, 9]
+    // 4.3 Filas de Actividades e Indicadores
     rowsData.forEach((rowData) => {
       const indLinesArray = rowData.indicators.map(ind => wrapTextToLines(ind, font, colWidths[1] - (cellPadding * 2), fontSize));
       const totalSubLines = indLinesArray.reduce((sum, lines) => sum + lines.length, 0);
@@ -449,7 +456,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
       currentTableRowY = nextRowY;
     });
 
-    // 4.4 Fila de Promedio Final (Línea divisoria vertical extendida continuamente)[cite: 8, 9]
+    // 4.4 Fila de Promedio Final
     const promHeight = 22;
     const promNextY = currentTableRowY - promHeight;
     page.drawRectangle({
@@ -487,7 +494,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
 
     currentTableRowY = promNextY;
 
-    // 4.5 Fila de Literal (Línea divisoria vertical extendida continuamente)[cite: 8, 9]
+    // 4.5 Fila de Literal
     const litHeight = 20;
     const litNextY = currentTableRowY - litHeight;
     page.drawRectangle({
@@ -522,7 +529,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
 
     currentTableRowY = litNextY;
 
-    // 4.6 Fila de Observaciones y/o sugerencias (Línea divisoria vertical extendida continuamente)[cite: 8, 9]
+    // 4.6 Fila de Observaciones y/o sugerencias
     const obsHeight = 34;
     const obsNextY = currentTableRowY - obsHeight;
     page.drawRectangle({
@@ -560,7 +567,7 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
     cursorY = obsNextY - 25;
 
     // =========================================================================
-    // 5. LUGAR, FECHA Y FIRMAS (9 PT - "Lugar y fecha:" normal, fecha en negrita)[cite: 15, 16]
+    // 5. LUGAR, FECHA Y FIRMAS
     // =========================================================================
     const lblFechaText = "Lugar y fecha: ";
     const valFechaText = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || '21'} de ${d.mes || 'septiembre'} de ${d.ano || '2026'}`;
@@ -570,7 +577,6 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
     const totalFechaW = wLblFecha + wValFecha;
     const fechaStartX = MARGIN_LEFT + CONTENT_WIDTH - totalFechaW;
 
-    // "Lugar y fecha: " normal
     page.drawText(lblFechaText, {
       x: fechaStartX,
       y: cursorY,
@@ -579,7 +585,6 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
       color: COLOR_TEXT,
     });
 
-    // Fecha en negrita
     const valFechaX = fechaStartX + wLblFecha;
     page.drawText(valFechaText, {
       x: valFechaX,
@@ -589,7 +594,6 @@ export const imprimirFichaF1_2doAno = async (estudianteId) => {
       color: COLOR_TEXT,
     });
 
-    // Línea punteada debajo únicamente de la fecha (o de todo el bloque de fecha)
     page.drawLine({
       start: { x: valFechaX, y: cursorY - 1.5 },
       end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: cursorY - 1.5 },

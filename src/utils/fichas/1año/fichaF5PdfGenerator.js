@@ -138,7 +138,7 @@ export const imprimirFichaF5_1erAno = async (estudianteId) => {
     cursorY -= 8;
 
     // =========================================================================
-    // 2. DATOS REFERENCIALES CON LÍNEAS PUNTEADAS DEBAJO
+    // 2. DATOS REFERENCIALES CON LÍNEAS PUNTEADAS ALINEADAS Y TEXTO ENCIMA
     // =========================================================================
     const refTitle = "DATOS REFERENCIALES DEL ESTUDIANTE:";
     page.drawText(refTitle, {
@@ -150,26 +150,28 @@ export const imprimirFichaF5_1erAno = async (estudianteId) => {
     });
     cursorY -= 16;
 
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Límite estricto del margen derecho
+
     const drawReferentialField = (label, value) => {
-      page.drawText(label, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font, color: COLOR_TEXT });
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
       const labelW = font.widthOfTextAtSize(label, 9);
-      const valX = MARGIN_LEFT + 15 + labelW;
+      const valX = MARGIN_LEFT + labelW;
       
+      // 1. DIBUJAR LA LÍNEA PUNTEADA DE FONDO DESDE EL INICIO DEL CAMPO HASTA EL MARGEN DERECHO
+      page.drawLine({
+        start: { x: valX, y: cursorY - 1 },
+        end: { x: maxLineRight, y: cursorY - 1 },
+        thickness: 0.8,
+        dashArray: [1, 1.5], // Patrón de puntitos finos
+        color: COLOR_TEXT,
+      });
+
+      // 2. DIBUJAR EL TEXTO DEL CAMPO SOBREPUESTO EN NEGRITA
       const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
       if (valText) {
         page.drawText(valText, { x: valX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
       }
-      
-      const valW = fontBold.widthOfTextAtSize(valText, 9);
-      const lineEndX = valX + Math.max(valW, 140);
 
-      page.drawLine({
-        start: { x: valX, y: cursorY - 2 },
-        end: { x: lineEndX, y: cursorY - 2 },
-        thickness: 0.8,
-        dashArray: [1.5, 1.5],
-        color: COLOR_TEXT,
-      });
       cursorY -= 14;
     };
 

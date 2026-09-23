@@ -1,29 +1,27 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import { PDF417 } from 'pdf417-generator';
 import { centralizador4toAnoService } from '../../../services/fichas/4año/centralizador4toAnoService';
 import { userService } from '../../../services/userService';
 
 // PALETA DE COLORES INSTITUCIONALES Y TÉCNICOS
 const COLOR_TEXT = rgb(0, 0, 0);
 const COLOR_WHITE = rgb(1, 1, 1);
-const COLOR_TITLE = rgb(201 / 255, 167 / 255, 81 / 255);            // Dorado Institucional (#C9A751)
+const COLOR_TITLE = rgb(201 / 255, 167 / 255, 81 / 255);            // Dorado (#C9A751)
 const COLOR_HEADER_BG = rgb(201 / 255, 167 / 255, 81 / 255);         // Dorado (#C9A751)
 const COLOR_BORDER = rgb(0, 0, 0);
 
 const BORDER = 0.8;
 
-// FUNCIÓN PARA FORMATEAR NÚMEROS (SI ES ENTERO -> "45", SI TIENE DECIMALES -> "45.2")
 function formatNumero(val) {
   if (val === undefined || val === null || val === '') return '';
   const num = parseFloat(val);
   if (isNaN(num)) return '';
   
-  // Si el número es entero exacto, devolver sin decimales
   if (Number.isInteger(num)) {
     return String(num);
   }
   
-  // Si tiene decimales, redondear como máximo a 1 o 2 decimales limpios
   const formatted = num.toFixed(2);
   return String(parseFloat(formatted));
 }
@@ -71,7 +69,21 @@ function fillRect(page, x, yTop, w, h, color) {
   page.drawRectangle({ x, y: yTop - h, width: w, height: h, color });
 }
 
-export const imprimirCentralizador4toAno = async (estudianteId) => {
+// Genera un Canvas HTML para el código PDF417
+const generarPdf417DataUrl = (texto) => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    try {
+      PDF417.draw(texto, canvas, 2, 2);
+      resolve(canvas.toDataURL('image/png'));
+    } catch (e) {
+      console.error("Error al renderizar código PDF417:", e);
+      resolve(null);
+    }
+  });
+};
+
+export const imprimirCentralizador4toAno = async (estudianteId, blockchainData = {}) => {
   try {
     const response = await centralizador4toAnoService.getByEstudiante(estudianteId);
 
@@ -83,6 +95,9 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
     }
 
     const d = response.datos;
+
+    const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
+    const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
 
     // OBTENER Y MAPEAR EL NOMBRE DEL TUTOR DESDE LA API DE USUARIOS
     let tutorNombre = "";
@@ -139,12 +154,11 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
       fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    // DIMENSIONES Y MÁRGENES ESTRICTOS
-    const MARGIN_TOP = 141.73;          // 5.0 cm exactos
-    const MARGIN_LEFT = 85.04;          // 3.0 cm exactos
-    const MARGIN_RIGHT = 51.31;         // 1.81 cm exactos
-    const MARGIN_BOTTOM = 141.73;       // 5.0 cm límite inferior
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt exactos
+    const MARGIN_TOP = 141.73;          
+    const MARGIN_LEFT = 85.04;          
+    const MARGIN_RIGHT = 51.31;         
+    const MARGIN_BOTTOM = 141.73;       
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT);
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
 
@@ -186,7 +200,7 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
     drawDottedLine(page, MARGIN_LEFT + wLblEsp, RIGHT_X, cursorY - 2);
     cursorY -= 20;
 
-    // CÁLCULO DINÁMICO DE PROMEDIOS MATEMÁTICOS CON DECIMALES EXACTOS
+    // CÁLCULO DINÁMICO DE PROMEDIOS
     const parseNum = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
     const nA1 = parseNum(d.nota_a1);
     const nA2 = parseNum(d.nota_a2);
@@ -198,13 +212,10 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
     const nC1 = parseNum(d.nota_c1);
     const nC2 = parseNum(d.nota_c2);
 
-    // Promedio Parcial Etapas 1 y 2 (Planificación + Ejecución - 7 notas)
     const promParcialEtapa12 = (nA1 + nA2 + nB1 + nB4 + nB5 + nB6 + nB7) / 7;
-
-    // Promedio Exclusivo de Etapa 3 (Socialización - Solo C-1 y C-2)
     const promSocializacionC1C2 = (nC1 + nC2) / 2;
 
-    // 3. ESTRUCTURA DE LA TABLA CENTRALIZADORA DE EVALUACIÓN
+    // 3. ESTRUCTURA DE LA TABLA CENTRALIZADORA
     const colW = [90, 105.65, 110, 115, 55];
     let cX = [MARGIN_LEFT];
     for (let i = 0; i < colW.length; i++) {
@@ -236,7 +247,6 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
 
     let currentY = tableTop - tableHeaderH;
 
-    // DIBUJO DINÁMICO DE FILAS CON ALTURA ADAPTATIVA DE CELDA
     const drawRowDynamic = (actText, indText, instText, puntajeVal) => {
       const aLines = wrapText(actText, font, 7, colW[1] - 8);
       const iLines = wrapText(indText, font, 7, colW[2] - 8);
@@ -248,28 +258,24 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
 
       hLine(page, cX[1], RIGHT_X, nextY);
 
-      // Dibujar Actividad
       let aY = currentY - 11;
       aLines.forEach(l => {
         page.drawText(l, { x: cX[1] + 4, y: aY, size: 7, font, color: COLOR_TEXT });
         aY -= 9;
       });
 
-      // Dibujar Indicador
       let iY = currentY - 11;
       iLines.forEach(l => {
         page.drawText(l, { x: cX[2] + 4, y: iY, size: 7, font, color: COLOR_TEXT });
         iY -= 9;
       });
 
-      // Dibujar Instrumento
       let instY = currentY - 11;
       instLines.forEach(l => {
         page.drawText(l, { x: cX[3] + 4, y: instY, size: 7, font, color: COLOR_TEXT });
         instY -= 9;
       });
 
-      // Dibujar Puntaje Formateado (Ej. "45" o "45.2")
       const pStr = formatNumero(puntajeVal);
       const wP = fontBold.widthOfTextAtSize(pStr, 8);
       page.drawText(pStr, { x: cX[4] + (colW[4] / 2) - (wP / 2), y: currentY - (rH / 2) - 3, size: 8, font: fontBold, color: COLOR_TEXT });
@@ -282,10 +288,9 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
       return rH;
     };
 
-    // ETAPA 1: PLANIFICACIÓN Y ORGANIZACIÓN
+    // ETAPA 1
     const stage1TopY = currentY;
     let stage1H = 0;
-
     stage1H += drawRowDynamic("Técnicas e instrumentos de investigación.", "Desempeño en el proceso de la PEC.", "Ficha A-1", nA1);
     stage1H += drawRowDynamic("Elaboración de planes de desarrollo curricular (PDC).", "PDC elaborados por cada integrante.", "Ficha A-2", nA2);
 
@@ -299,10 +304,9 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
       e1Y -= 10;
     });
 
-    // ETAPA 2: EJECUCIÓN
+    // ETAPA 2
     const stage2TopY = currentY;
     let stage2H = 0;
-
     stage2H += drawRowDynamic("Control de asistencia de la práctica educativa comunitaria (PEC).", "Control de asistencia, faltas y atrasos.", "Ficha B-1", nB1);
     stage2H += drawRowDynamic("Concreción curricular", "Desarrollo de PDC y de la clase comunitaria.", "Ficha B-4 (Promedio B-2, B-3)", nB4);
     stage2H += drawRowDynamic("Seguimiento y apoyo", "Del docente guía.", "Fichas B-5", nB5);
@@ -319,7 +323,7 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
       e2Y -= 10;
     });
 
-    // FILA DE CALIFICACIÓN PROMEDIO FINAL (PARCIAL INTERMEDIO)
+    // FILA PROMEDIO PARCIAL
     const subtotalH = 18;
     fillRect(page, cX[0], currentY, CONTENT_WIDTH, subtotalH, COLOR_HEADER_BG);
     hLine(page, MARGIN_LEFT, RIGHT_X, currentY - subtotalH);
@@ -337,10 +341,9 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
 
     currentY -= subtotalH;
 
-    // ETAPA 3: SOCIALIZACIÓN
+    // ETAPA 3
     const stage3TopY = currentY;
     let stage3H = 0;
-
     stage3H += drawRowDynamic("Evaluación del Documento del Diseño Metodológico por la/el docente tutor/a acompañante.", "Evaluación del documento", "Ficha C-1", nC1);
     stage3H += drawRowDynamic("Socialización del Diseño Metodológico - Comisión Comunitaria de Evaluación.", "Exposición y controversia", "Ficha C-2", nC2);
 
@@ -354,7 +357,7 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
       e3Y -= 10;
     });
 
-    // FILA DE CALIFICACIÓN PROMEDIO FINAL (SOCIALIZACIÓN C-1 Y C-2)
+    // FILA PROMEDIO FINAL
     const totalH = 18;
     fillRect(page, cX[0], currentY, CONTENT_WIDTH, totalH, COLOR_HEADER_BG);
     hLine(page, MARGIN_LEFT, RIGHT_X, currentY - totalH);
@@ -371,7 +374,6 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
     vLine(page, RIGHT_X, currentY, currentY - totalH);
 
     currentY -= totalH;
-
     cursorY = currentY - 15;
 
     // PROMEDIO LITERAL
@@ -384,7 +386,7 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
 
     cursorY -= 25;
 
-    // 4. LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA
+    // 4. LUGAR Y FECHA
     const ciudad = d.lugar_ciudad || "El Alto";
     const dia = d.dia || "21";
     const mes = d.mes || "septiembre";
@@ -409,7 +411,7 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
       cursorY = pageHeight - MARGIN_TOP - 20;
     }
 
-    // 5. BLOQUE DE FIRMAS INFERIORES (2 Firmas)
+    // 5. BLOQUE DE FIRMAS
     const sigColWidth = CONTENT_WIDTH / 2;
     const sigLineW = 160;
 
@@ -452,6 +454,29 @@ export const imprimirCentralizador4toAno = async (estudianteId) => {
         });
       }
     });
+
+    // -------------------------------------------------------------------------
+    // 6. CÓDIGO PDF417 BLOCKCHAIN (POSICIÓN ELEVADA)
+    // -------------------------------------------------------------------------
+    const pdf417X = MARGIN_LEFT;
+    const pdf417Y = 80;
+    const pdf417Width = 200;
+    const pdf417Height = 45;
+
+    const txHashValido = txHash || hashLocal || estudianteId;
+    const pdf417TextData = `ESTUDIANTE:${integranteNombre}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+
+    const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
+
+    if (pdf417DataUrl) {
+      const pdf417Image = await pdfDoc.embedPng(pdf417DataUrl);
+      page.drawImage(pdf417Image, {
+        x: pdf417X,
+        y: pdf417Y,
+        width: pdf417Width,
+        height: pdf417Height
+      });
+    }
 
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: 'application/pdf' });

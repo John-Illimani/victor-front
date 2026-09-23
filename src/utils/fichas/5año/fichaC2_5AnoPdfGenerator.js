@@ -88,8 +88,8 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 
       if (token.underline) {
         page.drawLine({
-          start: { x: cursorX, y: cursorY - 1.5 },
-          end: { x: cursorX + wordW, y: cursorY - 1.5 },
+          start: { x: cursorX, y: cursorY - 2.5 },
+          end: { x: cursorX + wordW, y: cursorY - 2.5 },
           thickness: 0.8,
           dashArray: [1.5, 1.5],
           color: token.color || COLOR_TEXT,
@@ -230,8 +230,26 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Margen derecho estricto de rincón a rincón
 
     let cursorY = pageHeight - MARGIN_TOP;
+
+    // HELPER DE DATOS REFERENCIALES (ETIQUETA NORMAL, VALOR EN NEGRITA)
+    const drawFullReferentialField = (label, value) => {
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 8, font, color: COLOR_TEXT });
+      const labelW = font.widthOfTextAtSize(label, 8);
+      const valX = MARGIN_LEFT + labelW;
+      
+      // Trazado de rincón a rincón
+      drawDottedLine(page, valX, maxLineRight, cursorY - 2.5);
+
+      const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
+      if (valText) {
+        page.drawText(valText, { x: valX, y: cursorY, size: 8, font: fontBold, color: COLOR_TEXT });
+      }
+
+      cursorY -= 14;
+    };
 
     // TÍTULOS PRINCIPALES
     const title1 = "FICHA C-2";
@@ -254,38 +272,15 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
     page.drawText("DATOS REFERENCIALES", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
     cursorY -= 14;
 
-    // Docente Tutor/a Acompañante
-    const tokensTutor = [
-      ...plainTokens("Docente Tutor/a Acompañante: ", fontBold),
-      ...underlineTokens(docenteTutorNombre, fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensTutor, {
-      x: MARGIN_LEFT,
-      y: cursorY,
-      maxWidth: CONTENT_WIDTH,
-      fontSize: 8,
-      lineHeight: 11,
-      spaceFont: font
-    });
-    cursorY -= 3;
+    // Docente Tutor/a Acompañante (Etiqueta Normal, Valor en Negrita)
+    drawFullReferentialField("Docente Tutor/a Acompañante: ", docenteTutorNombre);
 
-    // Estudiante
-    const tokensEst = [
-      ...plainTokens("Estudiante: ", fontBold),
-      ...underlineTokens(d.estudiante_nombre || d.apellidos_nombres || "", fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensEst, {
-      x: MARGIN_LEFT,
-      y: cursorY,
-      maxWidth: CONTENT_WIDTH,
-      fontSize: 8,
-      lineHeight: 11,
-      spaceFont: font
-    });
+    // Estudiante (Etiqueta Normal, Valor en Negrita)
+    drawFullReferentialField("Estudiante: ", d.estudiante_nombre || d.apellidos_nombres || "");
 
-    cursorY -= 10;
+    cursorY -= 2;
 
-    // CUADRO DATOS DE LA IEPC-PEC
+    // CUADRO DATOS DE LA IEPC-PEC CON LÍNEAS DE RINCÓN A RINCÓN
     page.drawText("DATOS DE LA IEPC-PEC", { x: MARGIN_LEFT + 4, y: cursorY - 2, size: 8.5, font: fontBold, color: COLOR_TEXT });
     cursorY -= 6;
 
@@ -304,47 +299,59 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
     const fFinVal = formatFechaCorta(d.fecha_pec_fin);
 
     // Fila 1: Departamento y Distrito
-    const tokensFila1 = [
-      ...plainTokens("Departamento: ", font),
-      ...underlineTokens(depVal, fontBold),
-      ...plainTokens("                             Distrito Educativo: ", font),
-      ...underlineTokens(distVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila1, { x: MARGIN_LEFT + 6, y: iepcTopY - 11, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblDep = "Departamento: ";
+    page.drawText(lblDep, { x: MARGIN_LEFT + 6, y: iepcTopY - 11, size: 8, font, color: COLOR_TEXT });
+    const wDepLbl = font.widthOfTextAtSize(lblDep, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wDepLbl, MARGIN_LEFT + 220, iepcTopY - 13.5);
+    if (depVal) page.drawText(depVal.toUpperCase(), { x: MARGIN_LEFT + 6 + wDepLbl, y: iepcTopY - 11, size: 8, font: fontBold, color: COLOR_TEXT });
+
+    const lblDist = "Distrito Educativo: ";
+    page.drawText(lblDist, { x: MARGIN_LEFT + 230, y: iepcTopY - 11, size: 8, font, color: COLOR_TEXT });
+    const wDistLbl = font.widthOfTextAtSize(lblDist, 8);
+    drawDottedLine(page, MARGIN_LEFT + 230 + wDistLbl, maxLineRight - 6, iepcTopY - 13.5);
+    if (distVal) page.drawText(distVal.toUpperCase(), { x: MARGIN_LEFT + 230 + wDistLbl, y: iepcTopY - 11, size: 8, font: fontBold, color: COLOR_TEXT });
 
     // Fila 2: UE/CEA/CEE
-    const tokensFila2 = [
-      ...plainTokens("UE/CEA/CEE: ", font),
-      ...underlineTokens(ueVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila2, { x: MARGIN_LEFT + 6, y: iepcTopY - 22, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblUe = "UE/CEA/CEE: ";
+    page.drawText(lblUe, { x: MARGIN_LEFT + 6, y: iepcTopY - 22, size: 8, font, color: COLOR_TEXT });
+    const wUeLbl = font.widthOfTextAtSize(lblUe, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wUeLbl, maxLineRight - 6, iepcTopY - 24.5);
+    if (ueVal) page.drawText(ueVal.toUpperCase(), { x: MARGIN_LEFT + 6 + wUeLbl, y: iepcTopY - 22, size: 8, font: fontBold, color: COLOR_TEXT });
 
     // Fila 3: Subsistema y Curso/Área
-    const tokensFila3 = [
-      ...plainTokens("Subsistema: ", font),
-      ...underlineTokens(subVal, fontBold),
-      ...plainTokens("                             Curso/Área: ", font),
-      ...underlineTokens(curVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila3, { x: MARGIN_LEFT + 6, y: iepcTopY - 33, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblSub = "Subsistema: ";
+    page.drawText(lblSub, { x: MARGIN_LEFT + 6, y: iepcTopY - 33, size: 8, font, color: COLOR_TEXT });
+    const wSubLbl = font.widthOfTextAtSize(lblSub, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wSubLbl, MARGIN_LEFT + 220, iepcTopY - 35.5);
+    if (subVal) page.drawText(subVal.toUpperCase(), { x: MARGIN_LEFT + 6 + wSubLbl, y: iepcTopY - 33, size: 8, font: fontBold, color: COLOR_TEXT });
+
+    const lblCur = "Curso/Área: ";
+    page.drawText(lblCur, { x: MARGIN_LEFT + 230, y: iepcTopY - 33, size: 8, font, color: COLOR_TEXT });
+    const wCurLbl = font.widthOfTextAtSize(lblCur, 8);
+    drawDottedLine(page, MARGIN_LEFT + 230 + wCurLbl, maxLineRight - 6, iepcTopY - 35.5);
+    if (curVal) page.drawText(curVal.toUpperCase(), { x: MARGIN_LEFT + 230 + wCurLbl, y: iepcTopY - 33, size: 8, font: fontBold, color: COLOR_TEXT });
 
     // Fila 4: Desarrollo PEC
-    const tokensFila4 = [
-      ...plainTokens("Desarrollo de la PEC: Del ", font),
-      ...underlineTokens(fIniVal, fontBold),
-      ...plainTokens(" Al ", font),
-      ...underlineTokens(fFinVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila4, { x: MARGIN_LEFT + 6, y: iepcTopY - 44, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblPec1 = "Desarrollo de la PEC: Del ";
+    page.drawText(lblPec1, { x: MARGIN_LEFT + 6, y: iepcTopY - 44, size: 8, font, color: COLOR_TEXT });
+    const wPec1Lbl = font.widthOfTextAtSize(lblPec1, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wPec1Lbl, MARGIN_LEFT + 220, iepcTopY - 46.5);
+    if (fIniVal) page.drawText(fIniVal, { x: MARGIN_LEFT + 6 + wPec1Lbl, y: iepcTopY - 44, size: 8, font: fontBold, color: COLOR_TEXT });
+
+    const lblPec2 = "Al ";
+    page.drawText(lblPec2, { x: MARGIN_LEFT + 230, y: iepcTopY - 44, size: 8, font, color: COLOR_TEXT });
+    const wPec2Lbl = font.widthOfTextAtSize(lblPec2, 8);
+    drawDottedLine(page, MARGIN_LEFT + 230 + wPec2Lbl, maxLineRight - 6, iepcTopY - 46.5);
+    if (fFinVal) page.drawText(fFinVal, { x: MARGIN_LEFT + 230 + wPec2Lbl, y: iepcTopY - 44, size: 8, font: fontBold, color: COLOR_TEXT });
 
     vLine(page, MARGIN_LEFT, iepcTopY, iepcTopY - iepcH);
     vLine(page, RIGHT_X, iepcTopY, iepcTopY - iepcH);
 
     cursorY = iepcTopY - iepcH - 10;
 
-    // Modalidad de Graduación
+    // Modalidad de Graduación (Etiqueta Normal, Valor en Negrita)
     const tokensMod = [
-      ...plainTokens("Modalidad de Graduación: ", fontBold),
+      ...plainTokens("Modalidad de Graduación: ", font),
       ...underlineTokens(d.modalidad_graduacion || "", fontBold)
     ];
     cursorY = drawJustifiedParagraph(page, tokensMod, {
@@ -357,9 +364,9 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
     });
     cursorY -= 3;
 
-    // Título del Trabajo de Grado
+    // Título del Trabajo de Grado (Etiqueta Normal, Valor en Negrita)
     const tokensTitulo = [
-      ...plainTokens("Título del Trabajo de Grado: ", fontBold),
+      ...plainTokens("Título del Trabajo de Grado: ", font),
       ...underlineTokens(d.titulo_trabajo_grado || "", fontBold)
     ];
     cursorY = drawJustifiedParagraph(page, tokensTitulo, {
@@ -379,7 +386,7 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
     for (let i = 0; i < colW.length; i++) cX.push(cX[i] + colW[i]);
 
     const headerTopY = cursorY;
-    const headerH = 45;
+    const headerH = 48; // Ligeramente ampliado para acomodar los saltos de línea del nombre
 
     fillRect(page, MARGIN_LEFT, headerTopY, CONTENT_WIDTH, headerH, COLOR_HEADER_BG);
     hLine(page, MARGIN_LEFT, RIGHT_X, headerTopY);
@@ -405,9 +412,19 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
       const ciStr = m.ci || "";
 
       const startX = cX[i];
-      page.drawText(`Nombre: ${nomStr}`, { x: startX + 3, y: headerTopY - 21, size: 6.5, font: fontBold, color: COLOR_WHITE });
-      page.drawText(`C.I.: ${ciStr}`, { x: startX + 3, y: headerTopY - 29, size: 6.5, font: fontBold, color: COLOR_WHITE });
-      page.drawText("Valoración de 1 a 100", { x: startX + 3, y: headerTopY - 38, size: 6.5, font: fontBold, color: COLOR_WHITE });
+      const maxColWidth = colW[i] - 6; // Límite exacto de celda con margen interno
+
+      // ENVOLVER NOMBRE DEL ESTUDIANTE EN MÚLTIPLES LÍNEAS PARA EVITAR DESBORDAMIENTO
+      const nomLines = wrapText(`Nombre: ${nomStr}`, fontBold, 6, maxColWidth);
+      let yNom = headerTopY - 20;
+
+      nomLines.forEach(lineaNom => {
+        page.drawText(lineaNom, { x: startX + 3, y: yNom, size: 6, font: fontBold, color: COLOR_WHITE });
+        yNom -= 7;
+      });
+
+      page.drawText(`C.I.: ${ciStr}`, { x: startX + 3, y: headerTopY - 33, size: 6, font: fontBold, color: COLOR_WHITE });
+      page.drawText("Valoración de 1 a 100", { x: startX + 3, y: headerTopY - 41, size: 6, font: fontBold, color: COLOR_WHITE });
     }
 
     for (let c = 0; c < cX.length; c++) vLine(page, cX[c], headerTopY, headerTopY - headerH);
@@ -454,7 +471,7 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
         yText -= 8.5;
       });
 
-      // Extraer calificación de cada integrante (soporta calificaciones.c1 o c1 directo)
+      // Extraer calificación de cada integrante
       for (let i = 1; i <= 3; i++) {
         const m = integrantes[i - 1] || {};
         const califs = m.calificaciones || {};
@@ -486,7 +503,7 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
 
     cursorY -= rowTotH + 20;
 
-    // LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA EXACTA
+    // LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA SEPARADA (-2.5pt)
     const ciudad = d.lugar_ciudad || "El Alto";
     const dia = d.dia || "21";
     const mes = d.mes || "septiembre";
@@ -502,7 +519,7 @@ export const imprimirFichaC2_5toAno = async (estudianteId) => {
 
     page.drawText(txtLugarLabel, { x: startX_LF, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
     page.drawText(txtLugarValor, { x: startX_LF + wLabelLF, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
-    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2);
+    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2.5);
 
     cursorY -= 35;
 

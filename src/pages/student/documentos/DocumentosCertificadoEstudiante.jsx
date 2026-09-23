@@ -11,38 +11,42 @@ import {
   Lock
 } from 'lucide-react';
 
-import jsPDF from 'jspdf';
-
-// SERVICIOS DE APIS DE CENTRALIZADORES POR AÑO DE FORMACIÓN
+// SERVICIOS
+import { userService } from '../../../services/userService';
+import { blockchainService } from '../../../services/blockchainService';
 import { centralizador1erAnoService } from '../../../services/fichas/1año/centralizador1erAnoService';
 import { centralizador2doAnoService } from '../../../services/fichas/2año/centralizador2doAnoService';
 import { centralizador3erAnoService } from '../../../services/fichas/3año/centralizador3erAnoService';
 import { centralizador4toAnoService } from '../../../services/fichas/4año/centralizador4toAnoService';
 import { centralizador5toAnoService } from '../../../services/fichas/5año/centralizador5toAnoService';
 
-// HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
+// MODAL BLOCKCHAIN
+import { BlockchainResultModal } from '../../../components/modals/BlockchainResultModal';
+
+// GENERADORES PDF
+import { imprimirCertificado1erAno } from './certificados/certificado1AnoPdfGenerator';
+import { imprimirCertificado2doAno } from './certificados/certificado2AnoPdfGenerator';
+import { imprimirCertificado3erAno } from './certificados/certificado3AnoPdfGenerator';
+import { imprimirCertificado4toAno } from './certificados/certificado4AnoPdfGenerator';
+import { imprimirCertificado5toAno } from './certificados/certificado5AnoPdfGenerator';
+
 const normalizarAnoStr = (cadena) => {
-  if (!cadena) return '1er Año';
+  if (!cadena) return null;
   const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (c.includes("1") || c.includes("primer")) return "1er Año";
-  if (c.includes("2") || c.includes("segundo")) return "2do Año";
-  if (c.includes("3") || c.includes("tercer")) return "3er Año";
-  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  
   if (c.includes("5") || c.includes("quinto")) return "5to Año";
-  return "1er Año";
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("3") || c.includes("tercer") || c.includes("tercero")) return "3er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("1") || c.includes("primer") || c.includes("primero")) return "1er Año";
+  
+  return null;
 };
 
-// HELPER PARA FORMATEAR NOTA (SIN DECIMALES INÚTILES SI ES ENTERO)
 const formatNota = (valor) => {
   const num = parseFloat(valor || 0);
   if (isNaN(num) || num === 0) return '0';
-  return Number.isInteger(num) ? `${num}` : `${num.toFixed(1)}`;
-};
-
-// HELPER PARA OBTENER MES EN ESPAÑOL
-const obtenerMesLetras = (mesIndex) => {
-  const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-  return meses[mesIndex];
+  return String(Math.round(num));
 };
 
 export const DocumentosCertificadoEstudiante = () => {
@@ -51,7 +55,15 @@ export const DocumentosCertificadoEstudiante = () => {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [promedioGeneral, setPromedioGeneral] = useState(0);
+
+  // ESTADO PARA EL MODAL DE RESULTADO BLOCKCHAIN
+  const [modalBlockchain, setModalBlockchain] = useState({
+    show: false,
+    data: null,
+    estudianteId: null
+  });
 
   useEffect(() => {
     const cargarCertificadoEstudiante = async () => {
@@ -66,39 +78,89 @@ export const DocumentosCertificadoEstudiante = () => {
           return;
         }
 
-        const student = JSON.parse(savedUserStr);
+        let student = JSON.parse(savedUserStr);
+        let studentId = student.id || student.estudiante_id;
+
+        try {
+          const usuariosList = await userService.getUsers();
+          if (Array.isArray(usuariosList)) {
+            const userApi = usuariosList.find(u => 
+              String(u.id) === String(studentId) || 
+              String(u.ci) === String(student.ci) || 
+              String(u.username) === String(student.username)
+            );
+            if (userApi) {
+              student = { ...student, ...userApi };
+              studentId = userApi.id || studentId;
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo refrescar el perfil del usuario desde la API:", e);
+        }
+
         setEstudianteLogueado(student);
 
-        const studentId = student.id || student.estudiante_id || student.ci;
-        const anoEst = normalizarAnoStr(student.ano_formacion);
+        let anoEst = normalizarAnoStr(student.ano_formacion || student.ano || student.curso);
+        let datosCentral = null;
 
-        if (!studentId) {
-          setErrorMessage("Identificador de estudiante no válido.");
-          setLoading(false);
-          return;
-        }
-
-        // Consultar el centralizador según el año de formación para obtener la nota acumulada final
-        let response = {};
-        if (anoEst === "1er Año") {
-          response = await centralizador1erAnoService.getByEstudiante(studentId);
-        } else if (anoEst === "2do Año") {
-          response = await centralizador2doAnoService.getByEstudiante(studentId);
+        if (anoEst === "2do Año") {
+          const res = await centralizador2doAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         } else if (anoEst === "3er Año") {
-          response = await centralizador3erAnoService.getByEstudiante(studentId);
+          const res = await centralizador3erAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         } else if (anoEst === "4to Año") {
-          response = await centralizador4toAnoService.getByEstudiante(studentId);
+          const res = await centralizador4toAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         } else if (anoEst === "5to Año") {
-          response = await centralizador5toAnoService.getByEstudiante(studentId);
+          const res = await centralizador5toAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
+        } else if (anoEst === "1er Año") {
+          const res = await centralizador1erAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         }
 
-        const datosCentral = response?.datos || {};
-        const notaFinal = parseFloat(
-          datosCentral.promedio_numeral || 
-          datosCentral.promedio_final || 
-          datosCentral.puntaje_final || 
-          0
-        );
+        if (!datosCentral) {
+          const servicios = [
+            { ano: "1er Año", service: centralizador1erAnoService },
+            { ano: "2do Año", service: centralizador2doAnoService },
+            { ano: "3er Año", service: centralizador3erAnoService },
+            { ano: "4to Año", service: centralizador4toAnoService },
+            { ano: "5to Año", service: centralizador5toAnoService },
+          ];
+
+          for (const s of servicios) {
+            try {
+              const res = await s.service.getByEstudiante(studentId);
+              if (res?.existe && res?.datos && Object.keys(res.datos).length > 0) {
+                datosCentral = res.datos;
+                anoEst = s.ano;
+                break;
+              }
+            } catch (err) {
+              // Continuar buscando
+            }
+          }
+        }
+
+        const anoFinal = anoEst || "1er Año";
+        setAnoDetectado(anoFinal);
+
+        let notaFinal = 0;
+        if (anoFinal === "5to Año" && datosCentral) {
+          const p1 = parseFloat(datosCentral?.promedio_final_1 || 0);
+          const p2 = parseFloat(datosCentral?.promedio_final_2 || 0);
+          notaFinal = (p1 + p2) / 2;
+        } else {
+          notaFinal = parseFloat(
+            datosCentral?.promedio_numeral || 
+            datosCentral?.promedio_final_2 || 
+            datosCentral?.promedio_final_1 || 
+            datosCentral?.promedio_final || 
+            datosCentral?.puntaje_final || 
+            0
+          );
+        }
 
         setPromedioGeneral(notaFinal);
 
@@ -113,166 +175,86 @@ export const DocumentosCertificadoEstudiante = () => {
     cargarCertificadoEstudiante();
   }, []);
 
-  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion);
   const esAprobado = promedioGeneral >= 51;
   const codigoCertificado = `CERT-IEPC-2026-${estudianteLogueado?.ci || '000000'}`;
   const fechaEmisionStr = new Date().toLocaleDateString('es-BO');
 
-  // FUNCIÓN PARA CARGAR LA IMAGEN Y CONVERTIRLA A BASE64
-  const getBase64ImageFromUrl = async (url) => {
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (err) {
-      console.warn("No se pudo cargar el logo:", err);
-      return null;
-    }
-  };
-
-  // GENERADOR DE CERTIFICADO DE CONCLUSIÓN EN PDF VERTICAL
-  const handleDownloadPDF = async () => {
-    if (!esAprobado) return;
+  // PASO 1: SOLICITAR CERTIFICACIÓN WEB3 Y MOSTRAR MODAL
+  const handleStartCertificationProcess = async () => {
+    if (!esAprobado || !estudianteLogueado) return;
     setIsGenerating(true);
 
     try {
-      const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'letter' // 215.9 mm x 279.4 mm
-      });
+      const studentId = estudianteLogueado.id || estudianteLogueado.estudiante_id || estudianteLogueado.ci;
+      let resCert;
 
-      const nombreCompleto = `${estudianteLogueado?.nombre || ''} ${estudianteLogueado?.apellido || ''}`.trim();
-      const especialidad = estudianteLogueado?.especialidad || 'S/E';
-      const ciStr = estudianteLogueado?.ci || 'S/N';
-      const anoFormacionUpper = anoEstudiante.toUpperCase();
-
-      // CARGAR LOGO
-      const logoBase64 = await getBase64ImageFromUrl('/logo_esfmthea.png');
-
-      // ==========================================
-      // ENCABEZADOS Y TEXTOS SUPERIORES
-      // ==========================================
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      
-      // Izquierda (Simulación de logos institucionales del estado)
-      doc.text("BOLIVIA", 25, 20);
-      doc.setFontSize(6);
-      doc.setFont('helvetica', 'normal');
-      doc.text("MINISTERIO\nDE EDUCACIÓN", 25, 24);
-
-      // Derecha (Texto ESFM THEA)
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.text("ESCUELA SUPERIOR DE FORMACIÓN DE MAESTRAS Y MAESTROS", 190, 20, { align: 'right' });
-      doc.text("TECNOLÓGICO Y HUMANÍSTICO EL ALTO", 190, 24, { align: 'right' });
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(6);
-      doc.text("Fundado el 6 de marzo de 2009 por D.S. 29825 y Ley 3441", 190, 27, { align: 'right' });
-
-      // ==========================================
-      // TÍTULO CENTRAL: CERTIFICACIÓN
-      // ==========================================
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
-      doc.text("CERTIFICACIÓN", 108, 55, { align: 'center' });
-
-      // ==========================================
-      // SUBTÍTULO DESCRIPTIVO
-      // ==========================================
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      const subTitleText = "LA DIRECCIÓN ACADÉMICA Y COORDINACIÓN ACADÉMICA IEPC - PEC DE LA ESCUELA SUPERIOR DE FORMACIÓN DE MAESTRAS Y MAESTROS TECNOLÓGICO Y HUMANÍSTICO EL ALTO, EN USO DE SUS ATRIBUCIONES:";
-      doc.text(subTitleText, 108, 70, { align: 'center', maxWidth: 150 });
-
-      // ==========================================
-      // CUERPO DEL DOCUMENTO
-      // ==========================================
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text("CERTIFICA:", 25, 105);
-
-      const bodyText = `Que el/la estudiante ${nombreCompleto.toUpperCase()} con C.I. ${ciStr}, Código: Nº ${codigoCertificado} de la especialidad de ${especialidad.toUpperCase()} de ${anoFormacionUpper} DE FORMACIÓN de la Escuela Superior de Formación de Maestras y Maestros Tecnológico y Humanístico El Alto, CONCLUYÓ Y APROBÓ SATISFACTORIAMENTE LA PRÁCTICA EDUCATIVA COMUNITARIA en la gestión académica 2026, con una Calificación Promedio Final de ${formatNota(promedioGeneral)} PUNTOS, por tanto, queda habilitado para los fines consiguientes del(a) interesado(a).`;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      // Justificación de texto con maxWidth en jsPDF
-      doc.text(bodyText, 25, 120, { align: 'justify', maxWidth: 165, lineHeightFactor: 1.5 });
-
-      const finalPhrase = "Es cuanto se certifica para fines consiguientes del(a) interesado(a).";
-      doc.text(finalPhrase, 25, 155);
-
-      // ==========================================
-      // MARCA DE AGUA (CENTRAL)
-      // ==========================================
-      if (logoBase64) {
-        doc.saveGraphicsState();
-        doc.setGState(new doc.GState({ opacity: 0.12 }));
-        // Centrar imagen: (215.9 - 100) / 2 = 57.95
-        doc.addImage(logoBase64, 'PNG', 58, 85, 100, 100);
-        doc.restoreGraphicsState();
+      try {
+        if (anoDetectado === "1er Año") {
+          resCert = await blockchainService.certificar1erAno(studentId);
+        } else if (anoDetectado === "2do Año") {
+          resCert = await blockchainService.certificar2doAno(studentId);
+        } else if (anoDetectado === "3er Año") {
+          resCert = await blockchainService.certificar3erAno(studentId);
+        } else if (anoDetectado === "4to Año") {
+          resCert = await blockchainService.certificar4toAno(studentId);
+        } else {
+          resCert = await blockchainService.certificar5toAno(studentId);
+        }
+      } catch (errBc) {
+        resCert = errBc;
       }
 
-      // ==========================================
-      // FECHA (Alineada a la derecha)
-      // ==========================================
-      const diaActual = new Date().getDate();
-      const mesActual = obtenerMesLetras(new Date().getMonth());
-      const anoActual = new Date().getFullYear();
-      
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      doc.text(`El Alto, ${diaActual} de ${mesActual} de ${anoActual}`, 190, 180, { align: 'right' });
+      setIsGenerating(false);
 
-      // ==========================================
-      // FIRMAS Y SELLOS
-      // ==========================================
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.4);
+      // MOSTRAR EL MODAL CON LA INFORMACIÓN RECIBIDA DE LA RED
+      setModalBlockchain({
+        show: true,
+        data: resCert,
+        estudianteId: studentId
+      });
 
-      // Firma 1 (Izquierda) - Coordinador IEPC-PEC
-      doc.line(30, 235, 90, 235);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.text("Coordinador(a) Académico IEPC-PEC", 60, 240, { align: 'center' });
-      doc.text("E.S.F.M.T.H. EL ALTO", 60, 244, { align: 'center' });
-
-      // Firma 2 (Derecha) - Director Académico
-      doc.line(125, 235, 185, 235);
-      doc.text("Director(a) Académico", 155, 240, { align: 'center' });
-      doc.text("E.S.F.M.T.H. EL ALTO", 155, 244, { align: 'center' });
-
-      // ==========================================
-      // PIE DE PÁGINA
-      // ==========================================
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(7);
-      doc.text('2026 "Año del Bicentenario con Calidad"', 108, 265, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-      doc.text('Av. Buenos Aires 1441 Zona Alta Chijini Distrito 12 El Alto • Teléfono/Fax: 2807049 • esfmthea.elalto.206@gmail.com', 108, 269, { align: 'center' });
-
-      // ==========================================
-      // GUARDAR DOCUMENTO
-      // ==========================================
-      doc.save(`Certificacion_IEPC_PEC_${ciStr}.pdf`);
     } catch (error) {
-      console.error("Error al generar PDF de Certificación:", error);
-      alert("Hubo un error al generar el documento. Verifica la consola.");
+      console.error("Error al iniciar proceso Web3:", error);
+      setIsGenerating(false);
+      alert("Hubo un fallo de comunicación al verificar con la red Blockchain.");
+    }
+  };
+
+  // PASO 2: CONFIRMAR IMPRESIÓN DEL PDF DESDE EL MODAL
+  const handleConfirmPrintPdf = async () => {
+    if (!modalBlockchain.estudianteId) return;
+
+    setIsGenerating(true);
+    const studentId = modalBlockchain.estudianteId;
+    let res = { success: false, message: "Año no reconocido." };
+
+    try {
+      if (anoDetectado === "1er Año") {
+        res = await imprimirCertificado1erAno(studentId, modalBlockchain.data);
+      } else if (anoDetectado === "2do Año") {
+        res = await imprimirCertificado2doAno(studentId, modalBlockchain.data);
+      } else if (anoDetectado === "3er Año") {
+        res = await imprimirCertificado3erAno(studentId, modalBlockchain.data);
+      } else if (anoDetectado === "4to Año") {
+        res = await imprimirCertificado4toAno(studentId, modalBlockchain.data);
+      } else if (anoDetectado === "5to Año") {
+        res = await imprimirCertificado5toAno(studentId, modalBlockchain.data);
+      }
+
+      if (!res.success) {
+        alert(res.message || "No se pudo generar el documento PDF.");
+      }
+    } catch (e) {
+      console.error("Error al generar PDF:", e);
+      alert("Fallo al construir el PDF del certificado.");
     } finally {
       setIsGenerating(false);
+      setModalBlockchain({ show: false, data: null, estudianteId: null });
     }
   };
 
   return (
     <div className="space-y-6 font-sans">
-      
-      {/* BANNER ENCABEZADO INSTITUCIONAL */}
       <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-[#121824] via-[#1A1A1A] to-[#801B28] p-6 sm:p-8 text-white shadow-2xl border border-white/10">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-2">
@@ -297,9 +279,7 @@ export const DocumentosCertificadoEstudiante = () => {
         </div>
       )}
 
-      {/* TARJETA PRINCIPAL DEL CERTIFICADO */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm space-y-6">
-        
         {loading ? (
           <div className="py-12 text-center font-bold text-slate-500 text-xs">
             <Loader2 className="animate-spin inline mr-2 text-[#801B28]" size={18} />
@@ -307,7 +287,6 @@ export const DocumentosCertificadoEstudiante = () => {
           </div>
         ) : (
           <>
-            {/* SECCIÓN RESUMEN DE PROMEDIO GENERAL */}
             <div className="p-6 rounded-3xl bg-slate-50 border border-slate-200 space-y-4 text-center">
               <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-2xl ${
                 esAprobado ? 'bg-amber-100 text-[#8C731A]' : 'bg-rose-100 text-rose-700'
@@ -323,11 +302,10 @@ export const DocumentosCertificadoEstudiante = () => {
                   CERTIFICACIÓN ACADÉMICA IEPC-PEC
                 </h2>
                 <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed">
-                  Se certifica el registro académico de la/el estudiante <strong className="text-slate-900">{estudianteLogueado?.nombre} {estudianteLogueado?.apellido}</strong> con C.I. <strong className="text-slate-900">{estudianteLogueado?.ci || 'S/N'}</strong> en el <strong className="text-slate-900">{anoEstudiante}</strong> de Formación.
+                  Se certifica el registro académico de la/el estudiante <strong className="text-slate-900">{estudianteLogueado?.nombre} {estudianteLogueado?.apellido}</strong> con C.I. <strong className="text-slate-900">{estudianteLogueado?.ci || 'S/N'}</strong> en el <strong className="text-slate-900">{anoDetectado}</strong> de Formación.
                 </p>
               </div>
 
-              {/* MUESTRA DEL PROMEDIO GENERAL DEL ESTUDIANTE */}
               <div className="pt-2 flex flex-col items-center justify-center gap-2">
                 <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
                   Promedio General Acumulado:
@@ -349,7 +327,6 @@ export const DocumentosCertificadoEstudiante = () => {
               </div>
             </div>
 
-            {/* ACCIÓN Y CONDICIONAL DE DESCARGA */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
               <div className={`flex items-center gap-2 text-xs font-extrabold px-3.5 py-2 rounded-xl border ${
                 esAprobado 
@@ -358,18 +335,18 @@ export const DocumentosCertificadoEstudiante = () => {
               }`}>
                 <ShieldCheck size={16} className={esAprobado ? 'text-emerald-600' : 'text-amber-600'} />
                 {esAprobado 
-                  ? 'Acreditación aprobada. Certificado verificado listo para descarga.' 
+                  ? 'Acreditación aprobada. Certificado verificado e inmutable en Blockchain.' 
                   : 'Se requiere una nota mayor o igual a 51 pts para habilitar la descarga del certificado.'}
               </div>
 
               {esAprobado ? (
                 <button
-                  onClick={handleDownloadPDF}
+                  onClick={handleStartCertificationProcess}
                   disabled={isGenerating}
                   className={`flex items-center gap-2 rounded-2xl bg-[#801B28] px-6 py-3 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all shrink-0 ${isGenerating ? 'opacity-70 cursor-wait' : 'cursor-pointer'}`}
                 >
                   {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} 
-                  {isGenerating ? '[ Generando... ]' : '[ Descargar Certificación PDF ]'}
+                  {isGenerating ? '[ Validando en Web3... ]' : '[ Descargar Certificación PDF ]'}
                 </button>
               ) : (
                 <button
@@ -382,9 +359,15 @@ export const DocumentosCertificadoEstudiante = () => {
             </div>
           </>
         )}
-
       </div>
 
+      {/* MODAL BLOCKCHAIN DE CONFIRMACIÓN DE DESCARGA */}
+      <BlockchainResultModal
+        show={modalBlockchain.show}
+        onClose={() => setModalBlockchain({ show: false, data: null, estudianteId: null })}
+        onConfirmPrint={handleConfirmPrintPdf}
+        data={modalBlockchain.data}
+      />
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { PDF417 } from "pdf417-generator";
 import { centralizador2doAnoService } from "../../../services/fichas/2año/centralizador2doAnoService";
 
 // Paleta de Colores Institucionales
@@ -12,15 +13,14 @@ const COLOR_BORDER = rgb(0, 0, 0);
 
 const BORDER = 1;
 
-// Estructura de las Filas de la Tabla Maestra (F-1 unificada en 2 filas)
 const FILAS_CENTRALIZADOR = [
   {
     etapaKey: "ETAPA\nPREPARATORIA\n(ANTES DE LA\nPEC)",
     etapaRows: 2,
     actividad: "Plan de acción del equipo comunitario de la PEC.",
     ficha: "F-1",
-    fichaRows: 2,   // F-1 unificada en 2 filas
-    notaRows: 2,    // Nota de F-1 unificada en 2 filas
+    fichaRows: 2,
+    notaRows: 2,
     fieldKey: "nota_f1"
   },
   {
@@ -33,7 +33,7 @@ const FILAS_CENTRALIZADOR = [
   },
   {
     etapaKey: "ETAPA DE\nEJECUCIÓN\n(DURANTE)",
-    etapaRows: 4,   // 4 filas unificadas para la etapa de ejecución
+    etapaRows: 4,
     actividad: "Asistencia a la Práctica Educativa Comunitaria (PEC). F-2 100%",
     ficha: "F-2",
     fichaRows: 1,
@@ -75,7 +75,6 @@ const FILAS_CENTRALIZADOR = [
   }
 ];
 
-// Formatear nota/promedio a entero estricto
 function formatNotaEntero(val) {
   if (val === undefined || val === null || val === "") return "";
   const num = Number(val);
@@ -83,7 +82,6 @@ function formatNotaEntero(val) {
   return String(Math.round(num));
 }
 
-// Generador de texto literal únicamente entero (sin "CON 00/100")
 function numeroALiteralEntero(num) {
   const n = Math.round(Number(num) || 0);
   if (n <= 0) return "CERO";
@@ -107,7 +105,6 @@ function numeroALiteralEntero(num) {
   return u === 0 ? decenas[d] : `${decenas[d]} Y ${unidades[u]}`;
 }
 
-// Ajuste automático de saltos de línea para celdas
 function wrapTextToLines(text, font, maxWidth, fontSize) {
   const out = [];
   String(text ?? "").split(/\r?\n/).forEach((parrafo) => {
@@ -130,7 +127,6 @@ function wrapTextToLines(text, font, maxWidth, fontSize) {
   return out.length ? out : [""];
 }
 
-// Trazo de línea punteada
 function drawDotted(page, x1, x2, y) {
   page.drawLine({
     start: { x: x1, y },
@@ -141,7 +137,6 @@ function drawDotted(page, x1, x2, y) {
   });
 }
 
-// Dibujar campo referencial con línea punteada del largo exacto del texto
 function campoPunteado(page, { label, value, x, y, minLine = 0, endX, font, fontBold, size = 9, forceUpper = true }) {
   page.drawText(label, { x, y, size, font, color: COLOR_TEXT });
   const valueX = x + font.widthOfTextAtSize(label, size);
@@ -171,7 +166,20 @@ function fillRect(page, x, yTop, w, h, color) {
   page.drawRectangle({ x, y: yTop - h, width: w, height: h, color });
 }
 
-export const imprimirCentralizador2doAno = async (estudianteId) => {
+const generarPdf417DataUrl = (texto) => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    try {
+      PDF417.draw(texto, canvas, 2, 2);
+      resolve(canvas.toDataURL('image/png'));
+    } catch (e) {
+      console.error("Error al renderizar código PDF417:", e);
+      resolve(null);
+    }
+  });
+};
+
+export const imprimirCentralizador2doAno = async (estudianteId, blockchainData = {}) => {
   try {
     const responseCentralizador = await centralizador2doAnoService.getByEstudiante(estudianteId);
 
@@ -180,6 +188,9 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     }
 
     const d = responseCentralizador.datos;
+
+    const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
+    const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
 
     const urlPlantilla = encodeURI("/pdf/2año/plantilla.pdf");
     let pdfDoc;
@@ -203,11 +214,10 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     pdfDoc.registerFontkit(fontkit);
 
     const page = pdfDoc.getPages()[0];
-    page.setSize(612, 792); // Carta
+    page.setSize(612, 792); 
     const pageWidth = 612;
     const pageHeight = 792;
 
-    // Carga de Fuentes Institucionales (Calibri)
     let font, fontBold;
     try {
       const resCalibri = await fetch("/fonts/calibri.ttf");
@@ -222,16 +232,15 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
       fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    // MÁRGENES: 5 CM ARRIBA (141.73 PT), 3 CM IZQ (85.04 PT), 1.81 CM DER (51.31 PT)
-    const MARGIN_TOP = (5 / 2.54) * 72; // 5 cm de margen superior de todo
-    const MARGIN_LEFT = 85.04;          // 3.0 cm
-    const MARGIN_RIGHT = 51.31;         // 1.81 cm
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
+    const MARGIN_TOP = (5 / 2.54) * 72; 
+    const MARGIN_LEFT = 85.04;          
+    const MARGIN_RIGHT = 51.31;         
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT);
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
 
     let cursorY = pageHeight - MARGIN_TOP;
 
-    // TÍTULOS PRINCIPALES EN 13 PT BOLD CENTRADOS (#C9A751)
+    // TÍTULOS
     const titulos = ["CENTRALIZADOR DE EVALUACIÓN IEPC-PEC 2º AÑO DE", "FORMACIÓN"];
     titulos.forEach((line) => {
       const wLine = fontBold.widthOfTextAtSize(line, 13);
@@ -255,7 +264,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     });
     cursorY -= 18;
 
-    // DATOS REFERENCIALES EN 9 PT
+    // DATOS REFERENCIALES
     campoPunteado(page, {
       label: "Nombres y Apellidos: ",
       value: d.apellidos_nombres || "",
@@ -294,7 +303,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     });
     cursorY -= 18;
 
-    // TABLA MAESTRA ÚNICA
+    // TABLA
     const tableTop = cursorY;
     const colWidths = [105, 240.65, 60, 70];
     const colX = [MARGIN_LEFT];
@@ -359,7 +368,6 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
         ay -= 9.5;
       });
 
-      // LÓGICA DE CELDA UNIFICADA PARA LA FICHA (F-1)
       if (row.fichaRows > 0 && row.ficha) {
         fichaInfoCurrent = { text: row.ficha, topY: rowTop, rowsCount: row.fichaRows, completedH: 0 };
       }
@@ -383,7 +391,6 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
         }
       }
 
-      // LÓGICA DE CELDA UNIFICADA PARA LA CALIFICACIÓN (F-1)
       if (row.notaRows > 0 && row.fieldKey) {
         const scoreStr = formatNotaEntero(d[row.fieldKey]);
         notaInfoCurrent = { text: scoreStr, topY: rowTop, rowsCount: row.notaRows, completedH: 0 };
@@ -410,7 +417,6 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
         }
       }
 
-      // LÓGICA DE CELDAS UNIFICADAS PARA LAS ETAPAS
       if (row.etapaKey) {
         etapaInfoCurrent = { text: row.etapaKey, topY: rowTop, rowsCount: row.etapaRows, completedH: 0 };
       }
@@ -452,7 +458,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
 
     hLinesToDraw.push(currentY);
 
-    // PROMEDIO TOTAL
+    // PROMEDIO
     const promFinalTop = currentY;
     page.drawText("Promedio Total", { x: colX[0] + 6, y: promFinalTop - 13, size: 8.5, font: fontBold, color: COLOR_TEXT });
 
@@ -465,7 +471,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     currentY -= 20;
     hLinesToDraw.push(currentY);
 
-    // PROMEDIO LITERAL SOLO ENTERO
+    // LITERAL
     const literalTop = currentY;
     fillRect(page, colX[0], literalTop, CONTENT_WIDTH, 20, COLOR_ROW_PINK);
     page.drawText("Literal: ", { x: colX[0] + 6, y: literalTop - 13, size: 8.5, font, color: COLOR_TEXT });
@@ -482,7 +488,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     currentY -= 20;
     hLinesToDraw.push(currentY);
 
-    // OBSERVACIONES Y SUGERENCIAS
+    // OBSERVACIONES
     const obsTop = currentY;
     const obsLines = wrapTextToLines(d.observaciones || "", font, CONTENT_WIDTH - 12, 8.5);
     const rowObsH = Math.max(obsLines.length * 9 + 16, 32);
@@ -500,7 +506,6 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
 
     const tableBottom = currentY;
 
-    // BORDES Y ESTRUCTURA DE TABLA
     hLinesToDraw.forEach((y) => hLine(page, MARGIN_LEFT, RIGHT_X, y));
     vLine(page, colX[0], tableTop, tableBottom);
     vLine(page, colX[1], tableTop - tableHeaderH, promFinalTop);
@@ -510,7 +515,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
 
     cursorY = tableBottom - 35;
 
-    // LUGAR Y FECHA DE EMISIÓN CENTRADO EXACTAMENTE HORIZONTALMENTE
+    // FECHA
     const labelFecha = "Lugar y fecha: ";
     const mesFormateado = String(d.mes || "septiembre").toLowerCase();
     const ciudadFormateada = d.lugar_ciudad || "El Alto";
@@ -520,8 +525,6 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
     const wLabel = font.widthOfTextAtSize(labelFecha, fontLabelSize);
     const wValue = fontBold.widthOfTextAtSize(valFechaText, fontLabelSize);
     const fechaTotalW = wLabel + wValue;
-    
-    // Posición centrada horizontal respecto al ancho útil
     const fechaStartX = MARGIN_LEFT + CONTENT_WIDTH / 2 - fechaTotalW / 2;
 
     campoPunteado(page, {
@@ -537,7 +540,7 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
 
     cursorY -= 55;
 
-    // FIRMAS CORRESPONDIENTES CENTRADAS
+    // FIRMAS
     const colWidthSig = CONTENT_WIDTH / 3;
     const lineW = 140;
 
@@ -584,7 +587,27 @@ export const imprimirCentralizador2doAno = async (estudianteId) => {
       });
     });
 
-    // Abrir PDF generado
+    // CÓDIGO PDF417 BLOCKCHAIN
+    const pdf417X = MARGIN_LEFT;
+    const pdf417Y = 90;
+    const pdf417Width = 200;
+    const pdf417Height = 45;
+
+    const txHashValido = txHash || hashLocal || estudianteId;
+    const pdf417TextData = `ESTUDIANTE:${d.apellidos_nombres || ''}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+
+    const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
+
+    if (pdf417DataUrl) {
+      const pdf417Image = await pdfDoc.embedPng(pdf417DataUrl);
+      page.drawImage(pdf417Image, {
+        x: pdf417X,
+        y: pdf417Y,
+        width: pdf417Width,
+        height: pdf417Height
+      });
+    }
+
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: "application/pdf" });
     const blobUrl = URL.createObjectURL(blob);

@@ -36,8 +36,8 @@ const normalizarAnoStr = (cadena) => {
 
 const formatNota = (valor) => {
   const num = parseFloat(valor || 0);
-  if (isNaN(num) || num === 0) return '0.0';
-  return Number.isInteger(num) ? `${num}.0` : `${num.toFixed(1)}`;
+  if (isNaN(num) || num === 0) return '0';
+  return String(Math.round(num));
 };
 
 export const EstudianteDashboard = () => {
@@ -59,14 +59,12 @@ export const EstudianteDashboard = () => {
     const loadDashboardData = async () => {
       setLoading(true);
       try {
-        // Llamada directa al nuevo método del servicio
         const profileData = await studentService.getMyStudentProfile();
         setCurrentUser(profileData);
 
         const studentId = profileData.id;
         const anoEst = normalizarAnoStr(profileData.ano_formacion);
 
-        // Cargar nota del centralizador según el año de formación
         let centralRes = {};
         if (studentId) {
           if (anoEst === "1er Año") centralRes = await centralizador1erAnoService.getByEstudiante(studentId);
@@ -77,11 +75,19 @@ export const EstudianteDashboard = () => {
         }
 
         const datosCentral = centralRes?.datos || {};
-        const notaFinal = parseFloat(
-          datosCentral.promedio_numeral || datosCentral.promedio_final || datosCentral.puntaje_final || 0
-        );
+        
+        // Cálculo del promedio general redondeado a entero (promedio entre Final 1 y Final 2 para 5to año)
+        let notaFinal = 0;
+        if (anoEst === "5to Año") {
+          const p1 = parseFloat(datosCentral.promedio_final_1 || 0);
+          const p2 = parseFloat(datosCentral.promedio_final_2 || 0);
+          notaFinal = Math.round((p1 + p2) / 2);
+        } else {
+          notaFinal = Math.round(parseFloat(
+            datosCentral.promedio_numeral || datosCentral.promedio_final || datosCentral.puntaje_final || 0
+          ));
+        }
 
-        // Construir nombres de los docentes a partir del JOIN
         const nombreDA = profileData.da_nombre 
           ? `${profileData.da_nombre} ${profileData.da_apellido || ''}`.trim() 
           : null;

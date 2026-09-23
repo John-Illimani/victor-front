@@ -37,15 +37,17 @@ const CATALAGO_ACTAS_ESTUDIANTE = [
   { codigo: "5_ACTA_POSTERGACION", nombre: "Acta de Postergación de la Socialización de Trabajo de Grado", ano: "5to Año" }
 ];
 
-// HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
+// HELPER ROBUSTO PARA NORMALIZAR CUALQUIER FORMATO DE AÑO DE LA API
 const normalizarAnoStr = (cadena) => {
-  if (!cadena) return '1er Año';
+  if (!cadena) return "1er Año";
   const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (c.includes("1") || c.includes("primer")) return "1er Año";
-  if (c.includes("2") || c.includes("segundo")) return "2do Año";
-  if (c.includes("3") || c.includes("tercer")) return "3er Año";
-  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  
   if (c.includes("5") || c.includes("quinto")) return "5to Año";
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("3") || c.includes("tercer") || c.includes("tercero")) return "3er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("1") || c.includes("primer") || c.includes("primero")) return "1er Año";
+  
   return "1er Año";
 };
 
@@ -53,6 +55,7 @@ export const DocumentosActasEstudiante = () => {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [actasStatusMap, setActasStatusMap] = useState({});
 
   useEffect(() => {
@@ -68,19 +71,48 @@ export const DocumentosActasEstudiante = () => {
           return;
         }
 
-        const student = JSON.parse(savedUserStr);
+        let student = JSON.parse(savedUserStr);
+        let studentId = student.id || student.estudiante_id;
+
+        // 1. OBTENER INFORMACIÓN FRESCA DESDE LA API DE ESTUDIANTES
+        try {
+          const estudiantesList = await studentService.getStudents();
+          if (Array.isArray(estudiantesList)) {
+            const studentApi = estudiantesList.find(u => 
+              String(u.id) === String(studentId) || 
+              String(u.ci) === String(student.ci) || 
+              String(u.correo) === String(student.correo)
+            );
+            if (studentApi) {
+              student = { ...student, ...studentApi };
+              studentId = studentApi.id || studentId;
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo refrescar el perfil desde la API de estudiantes, usando sesión local:", e);
+        }
+
         setEstudianteLogueado(student);
 
-        const studentId = student.id || student.estudiante_id || student.ci;
+        // 2. EXTRAER Y NORMALIZAR EL AÑO DE FORMACIÓN DE LA API
+        const anoCrudo = student.ano_formacion || student.ano || student.curso || student.nivel || "";
+        const anoEst = normalizarAnoStr(anoCrudo);
+        setAnoDetectado(anoEst);
+
         if (!studentId) {
           setErrorMessage("Identificador de estudiante no válido.");
           setLoading(false);
           return;
         }
 
+        // 3. FILTRAR Y CONSULTAR LAS ACTAS CORRESPONDIENTES AL AÑO DETECTADO
+        const actasCorrespondientes = CATALAGO_ACTAS_ESTUDIANTE.filter(
+          acta => normalizarAnoStr(acta.ano) === anoEst
+        );
+
         const statusMap = {};
         await Promise.all(
-          CATALAGO_ACTAS_ESTUDIANTE.map(async (acta) => {
+          actasCorrespondientes.map(async (acta) => {
             try {
               const res = await studentService.getFicha(studentId, acta.codigo);
               const datos = res?.datos || {};
@@ -107,9 +139,8 @@ export const DocumentosActasEstudiante = () => {
     cargarEstadoActas();
   }, []);
 
-  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion);
   const misActasCorrespondientes = CATALAGO_ACTAS_ESTUDIANTE.filter(
-    acta => normalizarAnoStr(acta.ano) === anoEstudiante
+    acta => normalizarAnoStr(acta.ano) === anoDetectado
   );
 
   // GENERADOR Y DESCARGADOR DE PDF OFICIAL
@@ -151,7 +182,7 @@ export const DocumentosActasEstudiante = () => {
     
     const nombreCompleto = `${estudianteLogueado?.nombre || ''} ${estudianteLogueado?.apellido || ''}`.trim();
     doc.text(`Estudiante: ${nombreCompleto || 'Sin Datos'}`, 18, 31);
-    doc.text(`C.I.: ${estudianteLogueado?.ci || 'S/N'}   |   Año de Formación: ${anoEstudiante}`, 18, 37);
+    doc.text(`C.I.: ${estudianteLogueado?.ci || 'S/N'}   |   Año de Formación: ${anoDetectado}`, 18, 37);
 
     // CONSTRUCCIÓN DE CONTENIDO Y CAMPOS REGISTRADOS
     const rows = [];
@@ -277,7 +308,7 @@ export const DocumentosActasEstudiante = () => {
 
           <div className="flex items-center gap-2">
             <span className="px-3.5 py-1.5 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 text-xs font-black uppercase">
-              {anoEstudiante}
+              {anoDetectado}
             </span>
           </div>
         </div>
@@ -335,7 +366,7 @@ export const DocumentosActasEstudiante = () => {
           })
         ) : (
           <div className="p-8 text-center text-slate-400 font-medium text-xs border border-dashed border-slate-200 rounded-2xl">
-            No existen actas asociadas para {anoEstudiante}.
+            No existen actas asociadas para {anoDetectado}.
           </div>
         )}
       </div>

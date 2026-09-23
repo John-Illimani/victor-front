@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import { PDF417 } from 'pdf417-generator';
 import { centralizador3erAnoService } from '../../../services/fichas/3año/centralizador3erAnoService';
 
 // Paleta de Colores Institucionales
@@ -10,7 +11,6 @@ const COLOR_BORDER = rgb(0, 0, 0);
 
 const BORDER = 0.8;
 
-// CONVERTIR NÚMEROS ENTEROS A PALABRAS (DEL 0 AL 100)
 function numeroALetras(num) {
   const n = Math.round(Number(num) || 0);
   if (n === 0) return "CERO";
@@ -102,7 +102,20 @@ function campoPunteado(page, { label, value, x, y, endX, minLine = 50, font, fon
   return lineEnd;
 }
 
-export const imprimirCentralizador3erAno = async (estudianteId) => {
+const generarPdf417DataUrl = (texto) => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    try {
+      PDF417.draw(texto, canvas, 2, 2);
+      resolve(canvas.toDataURL('image/png'));
+    } catch (e) {
+      console.error("Error al renderizar código PDF417:", e);
+      resolve(null);
+    }
+  });
+};
+
+export const imprimirCentralizador3erAno = async (estudianteId, blockchainData = {}) => {
   try {
     const response = await centralizador3erAnoService.getByEstudiante(estudianteId);
 
@@ -114,6 +127,9 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     }
 
     const d = response.datos;
+
+    const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
+    const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
 
     const urlPlantilla = encodeURI('/pdf/3año/plantilla.pdf');
     let pdfDoc;
@@ -137,11 +153,10 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     pdfDoc.registerFontkit(fontkit);
 
     const page = pdfDoc.getPages()[0];
-    page.setSize(612, 792); // Carta
+    page.setSize(612, 792); 
     const pageWidth = 612;
     const pageHeight = 792;
 
-    // Carga de Fuentes
     let font, fontBold;
     try {
       const resCalibri = await fetch('/fonts/calibri.ttf');
@@ -156,17 +171,16 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
       fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    // MÁRGENES ESTRICTOS (5 CM ARRIBA, 3 CM IZQ, 1.81 CM DER)
     const MARGIN_TOP = (5 / 2.54) * 72; 
     const MARGIN_LEFT = 85.04;          
     const MARGIN_RIGHT = 51.31;         
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT);
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
 
     let cursorY = pageHeight - MARGIN_TOP;
 
-    // TÍTULO PRINCIPAL (Dorado Bold Centrado)
+    // TÍTULO PRINCIPAL
     const titleLines = [
       "CENTRALIZADOR DE EVALUACIÓN",
       "IEPC-PEC 3º AÑO DE FORMACIÓN"
@@ -231,12 +245,11 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     });
     cursorY -= 20;
 
-    // ESTRUCTURA DE LA TABLA
+    // TABLA
     const tableTop = cursorY;
-    const colWidths = [120, 215.65, 70, 70]; // Total: 475.65 pt
+    const colWidths = [120, 215.65, 70, 70];
     const colX = [MARGIN_LEFT, MARGIN_LEFT + colWidths[0], MARGIN_LEFT + colWidths[0] + colWidths[1], MARGIN_LEFT + colWidths[0] + colWidths[1] + colWidths[2], RIGHT_X];
 
-    // BANNER SUPERIOR DE ENCABEZADO "CENTRALIZADOR DE LA EVALUACIÓN"
     const bannerH = 18;
     fillRect(page, MARGIN_LEFT, tableTop, CONTENT_WIDTH, bannerH, COLOR_TABLE_HEADER);
 
@@ -253,7 +266,6 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     let currentTableY = tableTop - bannerH;
     hLine(page, MARGIN_LEFT, RIGHT_X, currentTableY);
 
-    // ENCABEZADOS DE COLUMNA
     const headerH = 20;
     fillRect(page, MARGIN_LEFT, currentTableY, CONTENT_WIDTH, headerH, COLOR_TABLE_HEADER);
 
@@ -278,7 +290,6 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     currentTableY -= headerH;
     hLine(page, MARGIN_LEFT, RIGHT_X, currentTableY);
 
-    // ESTRUCTURA DE ETAPAS, ACTIVIDADES Y FICHAS
     const etapas = [
       {
         nombre: "Etapa preparatoria",
@@ -312,7 +323,6 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
         const rowH = Math.max(22, itemLines.length * lineH + 8);
         const textStartY = currentTableY - (rowH / 2) + ((itemLines.length * lineH) / 2) - 6;
 
-        // Imprimir Texto Actividad
         itemLines.forEach((l, lIdx) => {
           page.drawText(l, {
             x: colX[1] + 5,
@@ -323,7 +333,6 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
           });
         });
 
-        // Imprimir Código de Ficha (A-1, B-1, etc.)
         const wFicha = fontBold.widthOfTextAtSize(item.ficha, 8.5);
         page.drawText(item.ficha, {
           x: colX[2] + (colWidths[2] / 2) - (wFicha / 2),
@@ -333,7 +342,6 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
           color: COLOR_TEXT,
         });
 
-        // Imprimir Puntaje
         if (item.val !== undefined && item.val !== null && String(item.val).trim() !== "") {
           const vNum = Math.round(parseFloat(item.val) || 0);
           const vStr = String(vNum);
@@ -349,15 +357,12 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
 
         currentTableY -= rowH;
 
-        // Dibuja línea horizontal entre actividades de la misma etapa
         if (idx < etapa.items.length - 1) {
           hLine(page, colX[1], RIGHT_X, currentTableY);
         }
       });
 
       const etapaBottomY = currentTableY;
-
-      // Imprimir Nombre de la Etapa al centro del bloque
       const etapaCenterY = (etapaTopY + etapaBottomY) / 2;
       page.drawText(etapa.nombre, {
         x: MARGIN_LEFT + colWidths[0] / 2 - fontBold.widthOfTextAtSize(etapa.nombre, 8) / 2,
@@ -367,11 +372,9 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
         color: COLOR_TEXT,
       });
 
-      // Línea divisoria completa entre etapas
       hLine(page, MARGIN_LEFT, RIGHT_X, etapaBottomY);
     });
 
-    // FILA PROMEDIO (NÚMERO ENTERO) UNIFICADA EN UNA SOLA CELDA DE LAS PRIMERAS 3 COLUMNAS
     const pfVal = d.promedio_numeral ?? "";
     const promH = 20;
     const yPromRow = currentTableY;
@@ -399,10 +402,8 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     currentTableY -= promH;
     hLine(page, MARGIN_LEFT, RIGHT_X, currentTableY);
 
-    // FILA CONTINUA INTEGRADA EN LA TABLA PARA EL "LITERAL:"
     const litRowH = 22;
     const yLitRow = currentTableY;
-
     const litVal = obtenerLiteralRedondeado(pfVal, d.promedio_literal);
 
     page.drawText("Literal:", {
@@ -426,7 +427,6 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     currentTableY -= litRowH;
     hLine(page, MARGIN_LEFT, RIGHT_X, currentTableY);
 
-    // BORDES VERTICALES DE LA TABLA COMPLETA HASTA EL PROMEDIO Y LITERAL
     vLine(page, colX[0], tableTop, currentTableY);
     vLine(page, colX[1], tableTop, yPromRow);
     vLine(page, colX[2], tableTop, yPromRow);
@@ -435,7 +435,7 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
 
     cursorY = currentTableY - 15;
 
-    // RECUADRO OBSERVACIONES Y/O SUGERENCIAS
+    // OBSERVACIONES
     const obsHeaderH = 16;
     const yObsHeader = cursorY;
     fillRect(page, MARGIN_LEFT, yObsHeader, CONTENT_WIDTH, obsHeaderH, COLOR_TABLE_HEADER);
@@ -478,7 +478,7 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
 
     cursorY -= 20;
 
-    // LUGAR Y FECHA
+    // FECHA
     const lblFecha = "Lugar y fecha: ";
     const valFecha = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || String(new Date().getDate())} de ${d.mes || 'septiembre'} de ${d.ano || '2026'}`;
 
@@ -493,9 +493,9 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
     page.drawText(valFecha, { x: valStartX, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
     drawDottedLine(page, valStartX, valStartX + wVal, cursorY - 1.5);
 
-    cursorY -= 50;
+    cursorY -= 45;
 
-    // FIRMAS INFERIORES (2 FIRMAS)
+    // FIRMAS
     const colSigWidth = CONTENT_WIDTH / 2;
     const lineW = 160;
 
@@ -528,6 +528,27 @@ export const imprimirCentralizador3erAno = async (estudianteId) => {
         });
       });
     });
+
+    // CÓDIGO PDF417 BLOCKCHAIN
+    const pdf417X = MARGIN_LEFT;
+    const pdf417Y = 100;
+    const pdf417Width = 200;
+    const pdf417Height = 45;
+
+    const txHashValido = txHash || hashLocal || estudianteId;
+    const pdf417TextData = `ESTUDIANTE:${d.apellidos_nombres || ''}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+
+    const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
+
+    if (pdf417DataUrl) {
+      const pdf417Image = await pdfDoc.embedPng(pdf417DataUrl);
+      page.drawImage(pdf417Image, {
+        x: pdf417X,
+        y: pdf417Y,
+        width: pdf417Width,
+        height: pdf417Height
+      });
+    }
 
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: 'application/pdf' });

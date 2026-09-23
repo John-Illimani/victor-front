@@ -9,7 +9,8 @@ import {
   FileText
 } from 'lucide-react';
 
-// SERVICIOS DE APIS DE CENTRALIZADORES POR AÑO DE FORMACIÓN
+// SERVICIOS
+import { studentService } from '../../services/studentService';
 import { centralizador1erAnoService } from '../../services/fichas/1año/centralizador1erAnoService';
 import { centralizador2doAnoService } from '../../services/fichas/2año/centralizador2doAnoService';
 import { centralizador3erAnoService } from '../../services/fichas/3año/centralizador3erAnoService';
@@ -67,23 +68,23 @@ const ESTRUCTURA_CALIFICACIONES_POR_ANO = {
   ]
 };
 
-// HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
+// HELPER ROBUSTO DE NORMALIZACIÓN DE AÑO
 const normalizarAnoStr = (cadena) => {
   if (!cadena) return '1er Año';
   const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (c.includes("1") || c.includes("primer")) return "1er Año";
-  if (c.includes("2") || c.includes("segundo")) return "2do Año";
-  if (c.includes("3") || c.includes("tercer")) return "3er Año";
-  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
   if (c.includes("5") || c.includes("quinto")) return "5to Año";
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("3") || c.includes("tercer") || c.includes("tercero")) return "3er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("1") || c.includes("primer") || c.includes("primero")) return "1er Año";
   return "1er Año";
 };
 
-// HELPER PARA FORMATEAR NOTA (SIN DECIMALES INÚTILES SI ES ENTERO)
+// HELPER PARA FORMATEAR Y REDONDEAR NOTAS A ENTEROS
 const formatNota = (valor) => {
   const num = parseFloat(valor || 0);
   if (isNaN(num) || num === 0) return '—';
-  return Number.isInteger(num) ? `${num} pts` : `${num.toFixed(1)} pts`;
+  return `${Math.round(num)} pts`;
 };
 
 export const MisCalificacionesEstudiante = () => {
@@ -91,6 +92,7 @@ export const MisCalificacionesEstudiante = () => {
   const [errorMessage, setErrorMessage] = useState(null);
 
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [datosCentralizador, setDatosCentralizador] = useState({});
 
   useEffect(() => {
@@ -106,11 +108,33 @@ export const MisCalificacionesEstudiante = () => {
           return;
         }
 
-        const student = JSON.parse(savedUserStr);
+        let student = JSON.parse(savedUserStr);
+        let studentId = student.id || student.estudiante_id;
+
+        // 1. OBTENER INFORMACIÓN FRESCA DESDE LA API DE ESTUDIANTES
+        try {
+          const estudiantesList = await studentService.getStudents();
+          if (Array.isArray(estudiantesList)) {
+            const studentApi = estudiantesList.find(u => 
+              String(u.id) === String(studentId) || 
+              String(u.ci) === String(student.ci) || 
+              String(u.correo) === String(student.correo)
+            );
+            if (studentApi) {
+              student = { ...student, ...studentApi };
+              studentId = studentApi.id || studentId;
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo refrescar el perfil desde la API de estudiantes, usando sesión local:", e);
+        }
+
         setEstudianteLogueado(student);
 
-        const studentId = student.id || student.estudiante_id || student.ci;
-        const anoEst = normalizarAnoStr(student.ano_formacion);
+        // 2. EXTRAER Y NORMALIZAR EL AÑO DE FORMACIÓN DE LA API
+        const anoCrudo = student.ano_formacion || student.ano || student.curso || student.nivel || "";
+        const anoEst = normalizarAnoStr(anoCrudo);
+        setAnoDetectado(anoEst);
 
         if (!studentId) {
           setErrorMessage("Identificador del estudiante no válido.");
@@ -118,7 +142,7 @@ export const MisCalificacionesEstudiante = () => {
           return;
         }
 
-        // Consultar API de Centralizador según el año de formación
+        // 3. CONSULTAR API DE CENTRALIZADOR SEGÚN EL AÑO DETECTADO
         let response = {};
         if (anoEst === "1er Año") {
           response = await centralizador1erAnoService.getByEstudiante(studentId);
@@ -132,7 +156,7 @@ export const MisCalificacionesEstudiante = () => {
           response = await centralizador5toAnoService.getByEstudiante(studentId);
         }
 
-        setDatosCentralizador(response?.datos || {});
+        setDatosCentralizador(response?.datos || response || {});
 
       } catch (err) {
         console.error("Error al cargar calificaciones del centralizador:", err);
@@ -145,28 +169,31 @@ export const MisCalificacionesEstudiante = () => {
     cargarCalificacionesCentralizadas();
   }, []);
 
-  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion);
-  const fichasDelAno = ESTRUCTURA_CALIFICACIONES_POR_ANO[anoEstudiante] || [];
+  const fichasDelAno = ESTRUCTURA_CALIFICACIONES_POR_ANO[anoDetectado] || [];
 
-  // Mapear desglose de notas por ficha
+  // Mapear desglose de notas por ficha con redondeo
   const calificacionesData = fichasDelAno.map(item => {
-    const nota = parseFloat(datosCentralizador[item.key] || 0);
+    const notaRaw = parseFloat(datosCentralizador[item.key] || 0);
+    const notaRedondeada = Math.round(notaRaw);
     return {
       fichaCodigo: item.codigo,
       fichaNombre: item.nombre,
-      nota: nota,
-      estado: nota >= 51 ? 'Aprobado' : (nota > 0 ? 'Reprobado' : 'Pendiente')
+      nota: notaRedondeada,
+      estado: notaRedondeada >= 51 ? 'Aprobado' : (notaRedondeada > 0 ? 'Reprobado' : 'Pendiente')
     };
   });
 
-  // Nota final acumulada del centralizador
-  const notaFinalCentralizador = parseFloat(
+  // Nota final acumulada del centralizador redondeada
+  const notaFinalRaw = parseFloat(
     datosCentralizador.promedio_numeral || 
+    datosCentralizador.promedio_final_2 || 
+    datosCentralizador.promedio_final_1 || 
     datosCentralizador.promedio_final || 
     datosCentralizador.puntaje_final || 
     0
   );
 
+  const notaFinalCentralizador = Math.round(notaFinalRaw);
   const esAprobadoFinal = notaFinalCentralizador >= 51;
 
   return (
@@ -184,7 +211,7 @@ export const MisCalificacionesEstudiante = () => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Resumen cuantitativo de evaluaciones acumuladas y registrados en el Centralizador Oficial ({anoEstudiante}).
+              Resumen cuantitativo de evaluaciones acumuladas y registrados en el Centralizador Oficial ({anoDetectado}).
             </p>
           </div>
 
@@ -232,7 +259,7 @@ export const MisCalificacionesEstudiante = () => {
 
           <div className="flex items-center gap-2">
             <span className="px-3.5 py-1.5 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 text-xs font-black uppercase">
-              {anoEstudiante}
+              {anoDetectado}
             </span>
           </div>
         </div>

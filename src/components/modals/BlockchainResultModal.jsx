@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, ShieldAlert, ExternalLink, X, Hash, Layers } from 'lucide-react';
+import { CheckCircle2, ShieldAlert, ExternalLink, X, Hash, Layers, Printer } from 'lucide-react';
 
-export const BlockchainResultModal = ({ show, onClose, data }) => {
+export const BlockchainResultModal = ({ show, onClose, onConfirmPrint, data }) => {
   const [animate, setAnimate] = useState(false);
 
   useEffect(() => {
@@ -53,17 +53,17 @@ export const BlockchainResultModal = ({ show, onClose, data }) => {
         {/* Encabezado */}
         <div className="text-center space-y-1 mb-5">
           <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#801B28]">
-            {yaExistia ? 'DOCUMENTO YA REGISTRADO' : 'CERTIFICACIÓN WEB3 RECIENTE'}
+            {yaExistia ? 'CERTIFICACIÓN PREVIA DETECTADA' : 'EMISIÓN EXITOSA EN BLOCKCHAIN'}
           </span>
           <h3 className="text-lg font-black text-slate-900">
             {yaExistia
               ? 'El Centralizador Ya Se Encuentra Certificado'
-              : 'Emitido Correctamente en Blockchain'}
+              : 'Registrado Correctamente en la Red'}
           </h3>
           <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
             {yaExistia
-              ? 'Este documento fue validado previamente en la red Ethereum Sepolia y no requiere una nueva emisión.'
-              : 'El documento ha sido registrado inmutablemente en la red con firma criptográfica.'}
+              ? 'Este registro ya existe. ¿Desea generar e imprimir el PDF?'
+              : 'Se ha emitido la certificación inmutable. ¿Desea proceder a generar el documento PDF impreso?'}
           </p>
         </div>
 
@@ -71,41 +71,48 @@ export const BlockchainResultModal = ({ show, onClose, data }) => {
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5 text-xs font-mono mb-6">
           <div>
             <span className="text-[10px] text-slate-400 font-extrabold block uppercase flex items-center gap-1">
+              <Layers size={12} className="text-[#801B28]" /> Transacción TX Hash (EVM):
+            </span>
+            <span className="text-emerald-700 font-bold break-all block text-[11px]">
+              {txHash || 'PENDIENTE_DE_MINADO'}
+            </span>
+          </div>
+
+          <div className="pt-1 border-t border-slate-200">
+            <span className="text-[10px] text-slate-400 font-extrabold block uppercase flex items-center gap-1">
               <Hash size={12} className="text-[#801B28]" /> Hash Local SHA-256:
             </span>
             <span className="text-slate-800 font-bold break-all block text-[11px]">
               {hashLocal || '0x...'}
             </span>
           </div>
-
-          <div className="pt-1 border-t border-slate-200">
-            <span className="text-[10px] text-slate-400 font-extrabold block uppercase flex items-center gap-1">
-              <Layers size={12} className="text-[#801B28]" /> Transacción Hash (EVM):
-            </span>
-            <span className="text-emerald-700 font-bold break-all block text-[11px]">
-              {txHash || 'PENDIENTE_MINADO'}
-            </span>
-          </div>
         </div>
 
-        {/* Acciones */}
+        {/* Pregunta & Botones de Acción */}
         <div className="flex flex-col gap-2">
+          <button
+            onClick={onConfirmPrint}
+            className="flex items-center justify-center gap-2 w-full rounded-2xl bg-slate-900 py-3 text-xs font-extrabold text-white hover:bg-slate-800 transition-all cursor-pointer shadow-md"
+          >
+            <Printer size={15} /> Sí, Generar e Imprimir PDF
+          </button>
+
           {txHash && !txHash.includes('REGISTERED_ON_CHAIN') && (
             <a
               href={`https://sepolia.etherscan.io/tx/${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-xs font-extrabold text-white hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
             >
-              <ExternalLink size={14} /> Ver Transacción en Etherscan
+              <ExternalLink size={13} /> Explorar en Etherscan
             </a>
           )}
 
           <button
             onClick={onClose}
-            className="w-full rounded-2xl bg-slate-100 py-2.5 text-xs font-extrabold text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
+            className="w-full rounded-2xl border border-slate-200 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all cursor-pointer mt-1"
           >
-            Entendido
+            Cancelar / Cerrar
           </button>
         </div>
       </div>

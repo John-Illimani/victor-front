@@ -160,16 +160,16 @@ const COMPONENTES_5TO_ANO = {
   "5_C2": FichaC2_5toAno,
 };
 
-// HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
+// HELPER ROBUSTO DE NORMALIZACIÓN DE AÑO
 const normalizarAnoStr = (cadena) => {
-  if (!cadena) return '';
+  if (!cadena) return '1er Año';
   const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (c.includes("1") || c.includes("primer")) return "1er Año";
-  if (c.includes("2") || c.includes("segundo")) return "2do Año";
-  if (c.includes("3") || c.includes("tercer")) return "3er Año";
-  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
   if (c.includes("5") || c.includes("quinto")) return "5to Año";
-  return cadena;
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("3") || c.includes("tercer") || c.includes("tercero")) return "3er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("1") || c.includes("primer") || c.includes("primero")) return "1er Año";
+  return "1er Año";
 };
 
 export const MisFichasEstudiante = () => {
@@ -177,6 +177,7 @@ export const MisFichasEstudiante = () => {
   const [errorMessage, setErrorMessage] = useState(null);
   
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [fichasStatusMap, setFichasStatusMap] = useState({});
 
   // ESTADO DE FICHA ACTIVA PARA PREVISUALIZACIÓN
@@ -196,21 +197,48 @@ export const MisFichasEstudiante = () => {
           return;
         }
 
-        const student = JSON.parse(savedUserStr);
+        let student = JSON.parse(savedUserStr);
+        let studentId = student.id || student.estudiante_id;
+
+        // 1. OBTENER INFORMACIÓN FRESCA DESDE LA API DE ESTUDIANTES
+        try {
+          const estudiantesList = await studentService.getStudents();
+          if (Array.isArray(estudiantesList)) {
+            const studentApi = estudiantesList.find(u => 
+              String(u.id) === String(studentId) || 
+              String(u.ci) === String(student.ci) || 
+              String(u.correo) === String(student.correo)
+            );
+            if (studentApi) {
+              student = { ...student, ...studentApi };
+              studentId = studentApi.id || studentId;
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo refrescar el perfil desde la API de estudiantes, usando sesión local:", e);
+        }
+
         setEstudianteLogueado(student);
 
-        const studentId = student.id || student.estudiante_id || student.ci;
+        // 2. EXTRAER Y NORMALIZAR EL AÑO DE FORMACIÓN DE LA API
+        const anoCrudo = student.ano_formacion || student.ano || student.curso || student.nivel || "";
+        const anoEst = normalizarAnoStr(anoCrudo);
+        setAnoDetectado(anoEst);
+
         if (!studentId) {
           setErrorMessage("Identificador de estudiante no válido.");
           setLoading(false);
           return;
         }
 
-        // Obtener la información de cada ficha desde backend
+        // 3. FILTRAR Y CONSULTAR LAS FICHAS CORRESPONDIENTES AL AÑO DETECTADO
+        const fichasCorrespondientes = CATALAGO_FICHAS_ESTUDIANTE.filter(
+          ficha => normalizarAnoStr(ficha.ano) === anoEst
+        );
+
         const statusMap = {};
-        
         await Promise.all(
-          CATALAGO_FICHAS_ESTUDIANTE.map(async (ficha) => {
+          fichasCorrespondientes.map(async (ficha) => {
             try {
               const res = await studentService.getFicha(studentId, ficha.codigo);
               const datos = res?.datos || {};
@@ -239,10 +267,9 @@ export const MisFichasEstudiante = () => {
     cargarFichasEstudiante();
   }, []);
 
-  // FILTRAR FICHAS CORRESPONDIENTES AL AÑO DEL ESTUDIANTE
-  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion || '1er Año');
+  // FILTRAR FICHAS CORRESPONDIENTES AL AÑO DETECTADO
   const misFichasCorrespondientes = CATALAGO_FICHAS_ESTUDIANTE.filter(
-    ficha => normalizarAnoStr(ficha.ano) === anoEstudiante
+    ficha => normalizarAnoStr(ficha.ano) === anoDetectado
   );
 
   // ABRIR FICHA EN SOLO LECTURA
@@ -255,11 +282,11 @@ export const MisFichasEstudiante = () => {
   const getComponenteExplicito = () => {
     if (!activeFicha) return null;
 
-    if (anoEstudiante === "1er Año") return COMPONENTES_1ER_ANO[activeFicha.codigo] || null;
-    if (anoEstudiante === "2do Año") return COMPONENTES_2DO_ANO[activeFicha.codigo] || null;
-    if (anoEstudiante === "3er Año") return COMPONENTES_3ER_ANO[activeFicha.codigo] || null;
-    if (anoEstudiante === "4to Año") return COMPONENTES_4TO_ANO[activeFicha.codigo] || null;
-    if (anoEstudiante === "5to Año") return COMPONENTES_5TO_ANO[activeFicha.codigo] || null;
+    if (anoDetectado === "1er Año") return COMPONENTES_1ER_ANO[activeFicha.codigo] || null;
+    if (anoDetectado === "2do Año") return COMPONENTES_2DO_ANO[activeFicha.codigo] || null;
+    if (anoDetectado === "3er Año") return COMPONENTES_3ER_ANO[activeFicha.codigo] || null;
+    if (anoDetectado === "4to Año") return COMPONENTES_4TO_ANO[activeFicha.codigo] || null;
+    if (anoDetectado === "5to Año") return COMPONENTES_5TO_ANO[activeFicha.codigo] || null;
     return null;
   };
 
@@ -312,7 +339,7 @@ export const MisFichasEstudiante = () => {
 
           <div className="flex items-center gap-2">
             <span className="px-3.5 py-1.5 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 text-xs font-black uppercase">
-              {anoEstudiante}
+              {anoDetectado}
             </span>
           </div>
         </div>
@@ -323,7 +350,7 @@ export const MisFichasEstudiante = () => {
         <div className="border-b border-slate-100 pb-3">
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
             <FolderOpen size={18} className="text-[#801B28]" />
-            Fichas Pedagógicas — {anoEstudiante}
+            Fichas Pedagógicas — {anoDetectado}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Puedes previsualizar el contenido de cualquiera de tus fichas en modo de solo lectura.
@@ -379,7 +406,7 @@ export const MisFichasEstudiante = () => {
           </div>
         ) : (
           <div className="p-8 text-center text-slate-400 font-medium text-xs border border-dashed border-slate-200 rounded-2xl">
-            No existen fichas asignadas para el año de formación {anoEstudiante}.
+            No existen fichas asignadas para el año de formación {anoDetectado}.
           </div>
         )}
       </div>

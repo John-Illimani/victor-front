@@ -7,14 +7,14 @@ import {
   ShieldCheck, 
   Loader2, 
   AlertCircle, 
-  XCircle,
-  FileText
+  XCircle
 } from 'lucide-react';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// SERVICIOS DE APIS DE CENTRALIZADORES POR AÑO DE FORMACIÓN
+// SERVICIOS
+import { userService } from '../../../services/userService';
 import { centralizador1erAnoService } from '../../../services/fichas/1año/centralizador1erAnoService';
 import { centralizador2doAnoService } from '../../../services/fichas/2año/centralizador2doAnoService';
 import { centralizador3erAnoService } from '../../../services/fichas/3año/centralizador3erAnoService';
@@ -74,21 +74,22 @@ const ESTRUCTURA_CENTRALIZADOR_POR_ANO = {
 
 // HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
 const normalizarAnoStr = (cadena) => {
-  if (!cadena) return '1er Año';
+  if (!cadena) return null;
   const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (c.includes("1") || c.includes("primer")) return "1er Año";
-  if (c.includes("2") || c.includes("segundo")) return "2do Año";
-  if (c.includes("3") || c.includes("tercer")) return "3er Año";
-  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
   if (c.includes("5") || c.includes("quinto")) return "5to Año";
-  return "1er Año";
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("3") || c.includes("tercer") || c.includes("tercero")) return "3er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("1") || c.includes("primer") || c.includes("primero")) return "1er Año";
+  return null;
 };
 
-// HELPER PARA FORMATEAR NOTA (SIN DECIMALES INÚTILES SI ES ENTERO)
+// HELPER PARA FORMATEAR Y REDONDEAR NOTAS A NÚMEROS ENTEROS
 const formatNota = (valor) => {
-  const num = parseFloat(valor || 0);
-  if (isNaN(num) || num === 0) return '—';
-  return Number.isInteger(num) ? `${num} pts` : `${num.toFixed(1)} pts`;
+  if (valor === undefined || valor === null || valor === "") return '—';
+  const num = parseFloat(valor);
+  if (isNaN(num) || num === 0) return '0 pts';
+  return `${Math.round(num)} pts`;
 };
 
 export const DocumentosCentralizadorEstudiante = () => {
@@ -96,6 +97,7 @@ export const DocumentosCentralizadorEstudiante = () => {
   const [errorMessage, setErrorMessage] = useState(null);
 
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [datosCentralizador, setDatosCentralizador] = useState({});
 
   useEffect(() => {
@@ -111,32 +113,77 @@ export const DocumentosCentralizadorEstudiante = () => {
           return;
         }
 
-        const student = JSON.parse(savedUserStr);
+        let student = JSON.parse(savedUserStr);
+        let studentId = student.id || student.estudiante_id;
+
+        // 1. OBTENER INFORMACIÓN FRESCA DESDE LA API DE USUARIOS
+        try {
+          const usuariosList = await userService.getUsers();
+          if (Array.isArray(usuariosList)) {
+            const userApi = usuariosList.find(u => 
+              String(u.id) === String(studentId) || 
+              String(u.ci) === String(student.ci) || 
+              String(u.username) === String(student.username)
+            );
+            if (userApi) {
+              student = { ...student, ...userApi };
+              studentId = userApi.id || studentId;
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo refrescar el perfil del usuario desde la API:", e);
+        }
+
         setEstudianteLogueado(student);
 
-        const studentId = student.id || student.estudiante_id || student.ci;
-        const anoEst = normalizarAnoStr(student.ano_formacion);
+        // 2. DETERMINAR EL AÑO DE FORMACIÓN DE FORMA ESTRICTA
+        let anoEst = normalizarAnoStr(student.ano_formacion || student.ano || student.curso);
+        let datosCentral = null;
 
-        if (!studentId) {
-          setErrorMessage("Identificador de estudiante no válido.");
-          setLoading(false);
-          return;
-        }
-
-        let response = {};
-        if (anoEst === "1er Año") {
-          response = await centralizador1erAnoService.getByEstudiante(studentId);
-        } else if (anoEst === "2do Año") {
-          response = await centralizador2doAnoService.getByEstudiante(studentId);
+        if (anoEst === "2do Año") {
+          const res = await centralizador2doAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         } else if (anoEst === "3er Año") {
-          response = await centralizador3erAnoService.getByEstudiante(studentId);
+          const res = await centralizador3erAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         } else if (anoEst === "4to Año") {
-          response = await centralizador4toAnoService.getByEstudiante(studentId);
+          const res = await centralizador4toAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         } else if (anoEst === "5to Año") {
-          response = await centralizador5toAnoService.getByEstudiante(studentId);
+          const res = await centralizador5toAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
+        } else if (anoEst === "1er Año") {
+          const res = await centralizador1erAnoService.getByEstudiante(studentId);
+          if (res?.existe || res?.datos) datosCentral = res.datos || res;
         }
 
-        setDatosCentralizador(response?.datos || {});
+        // 3. FALLBACK: BUSCAR EN LOS 5 SERVICIOS SI EL AÑO ERA INDETERMINADO O NO RETORNÓ REGISTRO
+        if (!datosCentral) {
+          const servicios = [
+            { ano: "2do Año", service: centralizador2doAnoService },
+            { ano: "1er Año", service: centralizador1erAnoService },
+            { ano: "3er Año", service: centralizador3erAnoService },
+            { ano: "4to Año", service: centralizador4toAnoService },
+            { ano: "5to Año", service: centralizador5toAnoService },
+          ];
+
+          for (const s of servicios) {
+            try {
+              const res = await s.service.getByEstudiante(studentId);
+              if (res?.existe && res?.datos && Object.keys(res.datos).length > 0) {
+                datosCentral = res.datos;
+                anoEst = s.ano;
+                break;
+              }
+            } catch (err) {
+              // Continuar en el siguiente servicio
+            }
+          }
+        }
+
+        const anoFinal = anoEst || "1er Año";
+        setAnoDetectado(anoFinal);
+        setDatosCentralizador(datosCentral || {});
 
       } catch (err) {
         console.error("Error al cargar el centralizador de notas:", err);
@@ -149,16 +196,18 @@ export const DocumentosCentralizadorEstudiante = () => {
     cargarCentralizadorEstudiante();
   }, []);
 
-  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion);
-  const estructuraFichas = ESTRUCTURA_CENTRALIZADOR_POR_ANO[anoEstudiante] || [];
+  const estructuraFichas = ESTRUCTURA_CENTRALIZADOR_POR_ANO[anoDetectado] || [];
 
-  const notaFinalNum = parseFloat(
+  const notaFinalRaw = parseFloat(
     datosCentralizador.promedio_numeral || 
+    datosCentralizador.promedio_final_2 || 
+    datosCentralizador.promedio_final_1 || 
     datosCentralizador.promedio_final || 
     datosCentralizador.puntaje_final || 
     0
   );
 
+  const notaFinalNum = Math.round(notaFinalRaw);
   const esAprobado = notaFinalNum >= 51;
 
   // GENERADOR DEL CENTRALIZADOR EN PDF
@@ -178,7 +227,7 @@ export const DocumentosCentralizadorEstudiante = () => {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
-    doc.text(`Centralizador Oficial de Notas — ${anoEstudiante}`, 14, 20);
+    doc.text(`Centralizador Oficial de Notas — ${anoDetectado}`, 14, 20);
 
     doc.setFontSize(8);
     doc.text(`Fecha Emisión: ${new Date().toLocaleDateString('es-BO')}`, 198, 15, { align: 'right' });
@@ -200,18 +249,19 @@ export const DocumentosCentralizadorEstudiante = () => {
     doc.text(`C.I.: ${estudianteLogueado?.ci || 'S/N'}   |   Especialidad: ${estudianteLogueado?.especialidad || 'General'}`, 18, 37);
     doc.text(`Estado Final: ${esAprobado ? 'APROBADO' : 'REPROBADO / EN CURSO'}   |   Promedio Numeral: ${formatNota(notaFinalNum)}`, 18, 42);
 
-    // CONSTRUCCIÓN DE LA TABLA CON EL DESGLOSE DE FICHAS
+    // CONSTRUCCIÓN DE LA TABLA CON EL DESGLOSE DE FICHAS REDONDEADAS
     const rows = estructuraFichas.map(item => {
       const val = parseFloat(datosCentralizador[item.key] || 0);
+      const valRedondeado = Math.round(val);
       return [
         item.codigo,
         item.nombre,
-        formatNota(val),
-        val >= 51 ? 'APROBADO' : (val > 0 ? 'REPROBADO' : 'PENDIENTE')
+        formatNota(valRedondeado),
+        valRedondeado >= 51 ? 'APROBADO' : (valRedondeado > 0 ? 'REPROBADO' : 'PENDIENTE')
       ];
     });
 
-    // AGREGAR FILA DE TOTAL / PROMEDIO
+    // AGREGAR FILA DE TOTAL / PROMEDIO CON NOTA ENTERA REDONDEADA
     rows.push([
       'TOTAL',
       'PROMEDIO FINAL ACUMULADO DEL AÑO',
@@ -278,7 +328,7 @@ export const DocumentosCentralizadorEstudiante = () => {
       doc.text('Dirección Académica ESFM THEA', 152.5, finalY + 4, { align: 'center' });
     }
 
-    doc.save(`Centralizador_${anoEstudiante}_${estudianteLogueado?.ci || 'Estudiante'}.pdf`);
+    doc.save(`Centralizador_${anoDetectado}_${estudianteLogueado?.ci || 'Estudiante'}.pdf`);
   };
 
   return (
@@ -314,7 +364,7 @@ export const DocumentosCentralizadorEstudiante = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <span className="text-[10px] font-bold text-[#801B28] uppercase tracking-wider block">Centralizador Oficial</span>
-            <h2 className="text-lg font-black text-slate-900 mt-0.5">SÁBANA DE NOTAS IEPC-PEC GESTIÓN 2026 — {anoEstudiante}</h2>
+            <h2 className="text-lg font-black text-slate-900 mt-0.5">SÁBANA DE NOTAS IEPC-PEC GESTIÓN 2026 — {anoDetectado}</h2>
           </div>
           <span className={`px-3 py-1 rounded-full text-xs font-extrabold flex items-center gap-1 self-start sm:self-auto ${
             esAprobado ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'

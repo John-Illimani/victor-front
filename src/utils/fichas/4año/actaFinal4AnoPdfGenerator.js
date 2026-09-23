@@ -18,7 +18,7 @@ const plainTokens = (text, font, color) =>
 const underlineTokens = (text, font, color) =>
   String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
 
-// FUNCIÓN DE JUSTIFICACIÓN POR TOKENS EXACTA (CON LÍNEA PUNTEADA BAJO DATOS DINÁMICOS)
+// FUNCIÓN DE JUSTIFICACIÓN POR TOKENS EXACTA (Línea punteada debajo de tokens rellenados)
 function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHeight, spaceFont }) {
   const spaceWidth = spaceFont.widthOfTextAtSize(' ', fontSize);
 
@@ -60,11 +60,10 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
         color: token.color || COLOR_TEXT,
       });
 
-      // Trazado de línea punteada exactamente debajo de la palabra rellenada dinámicamente
       if (token.underline) {
         page.drawLine({
-          start: { x: cursorX, y: cursorY - 1.5 },
-          end: { x: cursorX + wordW, y: cursorY - 1.5 },
+          start: { x: cursorX, y: cursorY - 2.5 },
+          end: { x: cursorX + wordW, y: cursorY - 2.5 },
           thickness: 0.8,
           dashArray: [1.5, 1.5],
           color: token.color || COLOR_TEXT,
@@ -185,10 +184,28 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt exactos
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Margen derecho exacto de rincón a rincón
 
     let cursorY = pageHeight - MARGIN_TOP;
 
-    // 1. TÍTULOS PRINCIPALES (13 pt Bold, Dorado Institucional)
+    // HELPER PARA CAMPOS REFERENCIALES DE RINCÓN A RINCÓN
+    const drawFullReferentialField = (label, value) => {
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
+      const labelW = font.widthOfTextAtSize(label, 8.5);
+      const valX = MARGIN_LEFT + labelW;
+      
+      // Línea punteada de rincón a rincón (de extremo a extremo)
+      drawDottedLine(page, valX, maxLineRight, cursorY - 2.5);
+
+      const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
+      if (valText) {
+        page.drawText(valText, { x: valX, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
+      }
+
+      cursorY -= 14;
+    };
+
+    // 1. TÍTULOS PRINCIPALES (12 pt Bold, Dorado Institucional)
     const title1 = "ACTA FINAL DEL PROCESO DE EVALUACIÓN DEL DISEÑO METODOLÓGICO";
     const title2 = "DE IMPLEMENTACIÓN DEL TRABAJO DE GRADO";
 
@@ -200,7 +217,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
     page.drawText(title2, { x: CONTENT_CENTER_X - wT2 / 2, y: cursorY, size: 12, font: fontBold, color: COLOR_TITLE });
     cursorY -= 20;
 
-    // 2. PRIMER PÁRRAFO JUSTIFICADO CON TOKENS DINÁMICOS Y LÍNEAS PUNTEADAS
+    // 2. PRIMER PÁRRAFO JUSTIFICADO CON TOKENS DINÁMICOS Y LÍNEAS PUNTEADAS DEBAJO DEL TEXTO
     const esfmUa = d.esfm_ua || "ESFM Simón Bolívar / UA El Alto";
     const ciudadActa = d.lugar_ciudad || "El Alto";
     const horaActa = d.hora_acta || "08:00";
@@ -223,7 +240,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
       ...underlineTokens(mesActa, fontBold),
       ...plainTokens("de", font),
       ...underlineTokens(`${anoActa}.`, fontBold),
-      ...plainTokens("De acuerdo al Reglamento de Trabajo de Grado de Formación Inicial de Maestros/as (R.M. N° 2938/2017) y el Protocolo de Evaluación establecido, se constituyó la Comisión Comunitaria de Evaluación de la Socialización Comunitaria Pública, con la finalidad de evaluar la Exposición Grupal del Diseño Metodológico de Implementación de Trabajo de Grado titulado:", font),
+      ...plainTokens("De acuerdo al Reglamento de Trabajo de Grado de Formación Inicial de Maestros/as (R.M. N° 2938/2017) y el Protocolo de Evaluación established, se constituyó la Comisión Comunitaria de Evaluación de la Socialización Comunitaria Pública, con la finalidad de evaluar la Exposición Grupal del Diseño Metodológico de Implementación de Trabajo de Grado titulado:", font),
     ];
 
     cursorY = drawJustifiedParagraph(page, p1Tokens, {
@@ -237,13 +254,13 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
 
     cursorY -= 10;
 
-    // Título del diseño destacado, centrado y con línea punteada
+    // Título del diseño destacado, centrado y con línea punteada debajo de la frase
     const titleLines = wrapText(`"${tituloDiseno}"`, fontBold, 9.5, CONTENT_WIDTH - 20);
     titleLines.forEach(line => {
       const wTL = fontBold.widthOfTextAtSize(line, 9.5);
       const textX = CONTENT_CENTER_X - wTL / 2;
       page.drawText(line, { x: textX, y: cursorY, size: 9.5, font: fontBold, color: COLOR_TEXT });
-      drawDottedLine(page, textX, textX + wTL, cursorY - 2);
+      drawDottedLine(page, textX, textX + wTL, cursorY - 2.5);
       cursorY -= 14;
     });
 
@@ -286,7 +303,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
       cursorY = pageHeight - MARGIN_TOP;
     }
 
-    // 3. TABLA DE CALIFICACIONES FINALES (Ancho exacto 475.65 pt con 7 columnas)[cite: 16]
+    // 3. TABLA DE CALIFICACIONES FINALES (Ancho exacto 475.65 pt con 7 columnas)
     const colW = [25, 60, 155.65, 55, 65, 55, 60];
     let cX = [MARGIN_LEFT];
     for (let i = 0; i < colW.length; i++) {
@@ -300,7 +317,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
     hLine(page, MARGIN_LEFT, RIGHT_X, tableTop);
     hLine(page, MARGIN_LEFT, RIGHT_X, tableTop - tableHeaderH);
 
-    // Encabezado principal superior ("PUNTAJE FINAL" centrado y un poco más arriba)
+    // Encabezado principal superior ("PUNTAJE FINAL")
     const puntajeFinalHeaderX = cX[3];
     const puntajeFinalHeaderW = colW[3] + colW[4] + colW[5];
     const wPuntajeText = fontBold.widthOfTextAtSize("PUNTAJE FINAL", 7.5);
@@ -312,7 +329,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
       color: COLOR_WHITE 
     });
 
-    // Subtítulos de celdas simples (No., C.I., NOMBRES Y APELLIDOS, Promedio) centrados verticalmente y más arriba
+    // Subtítulos de celdas simples
     const wNo = fontBold.widthOfTextAtSize("No.", 7);
     page.drawText("No.", { x: cX[0] + (colW[0] / 2) - (wNo / 2), y: tableTop - 24, size: 7, font: fontBold, color: COLOR_WHITE });
 
@@ -325,7 +342,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
     const wProm = fontBold.widthOfTextAtSize("Promedio", 7);
     page.drawText("Promedio", { x: cX[5] + (colW[5] / 2) - (wProm / 2), y: tableTop - 24, size: 7, font: fontBold, color: COLOR_WHITE });
 
-    // Subtítulos de las subcolumnas de PUNTAJE FINAL (Doc. Diseño, Socializa Comunitaria) más arriba
+    // Subtítulos de las subcolumnas de PUNTAJE FINAL
     const wDocD = fontBold.widthOfTextAtSize("Doc. Diseño", 6.5);
     page.drawText("Doc. Diseño", { x: cX[3] + (colW[3] / 2) - (wDocD / 2), y: tableTop - 24, size: 6.5, font: fontBold, color: COLOR_WHITE });
 
@@ -334,7 +351,7 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
     const wSocC2 = fontBold.widthOfTextAtSize("Comunitaria", 6.5);
     page.drawText("Comunitaria", { x: cX[4] + (colW[4] / 2) - (wSocC2 / 2), y: tableTop - 29, size: 6.5, font: fontBold, color: COLOR_WHITE });
 
-    // Subtítulos de Resultado (Aprobado/reprobado) más arriba
+    // Subtítulos de Resultado
     const wRes1 = fontBold.widthOfTextAtSize("Resultado", 6.5);
     page.drawText("Resultado", { x: cX[6] + (colW[6] / 2) - (wRes1 / 2), y: tableTop - 18, size: 6.5, font: fontBold, color: COLOR_WHITE });
     const wRes2 = fontBold.widthOfTextAtSize("(Aprobado/", 6);
@@ -343,17 +360,15 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
     page.drawText("reprobado)", { x: cX[6] + (colW[6] / 2) - (wRes3 / 2), y: tableTop - 30, size: 6, font: fontBold, color: COLOR_WHITE });
 
     hLine(page, cX[3], cX[6], tableTop - 15);
-    
 
     for (let c = 0; c < cX.length; c++) {
-      // Evitar que las líneas verticales de las subcolumnas corten el título superior "PUNTAJE FINAL"
       const vTop = (c === 4 || c === 5) ? tableTop - 15 : tableTop;
       vLine(page, cX[c], vTop, tableTop - tableHeaderH);
     }
 
     let currentY = tableTop - tableHeaderH;
 
-    // Filas de Integrantes[cite: 16]
+    // Filas de Integrantes
     const rowH = 20;
     integrantes.forEach((est, idx) => {
       hLine(page, MARGIN_LEFT, RIGHT_X, currentY - rowH);
@@ -402,19 +417,19 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
 
     currentY -= 15;
 
-    // Control preventivo antes de la leyenda final y firmas[cite: 16]
+    // Control preventivo antes de la leyenda final y firmas
     if (currentY < MARGIN_BOTTOM + 90) {
       page = pdfDoc.addPage([612, 792]);
       currentY = pageHeight - MARGIN_TOP;
     }
 
-    // Párrafo de cierre[cite: 16]
+    // Párrafo de cierre
     const cierreText = "En fe de lo cual se levanta el acta para fines consiguientes.";
     page.drawText(cierreText, { x: MARGIN_LEFT, y: currentY, size: 8.5, font, color: COLOR_TEXT });
 
     currentY -= 30;
 
-    // 4. LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA (Valores en Negrita)[cite: 16]
+    // 4. LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA SEPARADA (-2.5pt)
     const ciudad = d.lugar_ciudad || "El Alto";
     const dia = d.dia || "21";
     const mes = d.mes || "septiembre";
@@ -430,17 +445,17 @@ export const imprimirActaFinal4toAno = async (estudianteId) => {
 
     page.drawText(txtLugarLabel, { x: startX_LF, y: currentY, size: 8.5, font, color: COLOR_TEXT });
     page.drawText(txtLugarValor, { x: startX_LF + wLabelLF, y: currentY, size: 8.5, font: fontBold, color: COLOR_TEXT });
-    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, currentY - 2);
+    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, currentY - 2.5);
 
     currentY -= 45;
 
-    // Control preventivo si las firmas superan el margen inferior[cite: 16]
+    // Control preventivo si las firmas superan el margen inferior
     if (currentY < MARGIN_BOTTOM) {
       page = pdfDoc.addPage([612, 792]);
       currentY = pageHeight - MARGIN_TOP - 20;
     }
 
-    // 5. BLOQUE DE FIRMAS INFERIORES (Presidenta/e, Secretaria/o, Relator/a, Veedor/a)[cite: 16]
+    // 5. BLOQUE DE FIRMAS INFERIORES
     const sigColWidth = CONTENT_WIDTH / 4;
     const sigLineW = 90;
 

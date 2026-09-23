@@ -444,7 +444,7 @@ export const imprimirFichaC1_4toAno = async (estudianteId) => {
 
     drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2);
 
-    cursorY -= 55;
+    cursorY -= 35;
 
     // 7. BLOQUE DE FIRMA INFERIOR (DOCENTE TUTOR/A ACOMPAÑANTE CENTRADO)
     const sigLineW = 180;

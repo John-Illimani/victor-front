@@ -68,8 +68,8 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 
       if (token.underline) {
         page.drawLine({
-          start: { x: cursorX, y: cursorY - 1.5 },
-          end: { x: cursorX + wordW, y: cursorY - 1.5 },
+          start: { x: cursorX, y: cursorY - 2.5 },
+          end: { x: cursorX + wordW, y: cursorY - 2.5 },
           thickness: 0.8,
           dashArray: [1.5, 1.5],
           color: token.color || COLOR_TEXT,
@@ -210,8 +210,26 @@ export const imprimirActaPostergacion5toAno = async (estudianteId) => {
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Margen derecho estricto de rincón a rincón
 
     let cursorY = pageHeight - MARGIN_TOP;
+
+    // HELPER DE DATOS REFERENCIALES DE RINCÓN A RINCÓN (ETIQUETA NORMAL, VALOR EN NEGRITA)
+    const drawFullReferentialField = (label, value) => {
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 8, font, color: COLOR_TEXT });
+      const labelW = font.widthOfTextAtSize(label, 8);
+      const valX = MARGIN_LEFT + labelW;
+      
+      // Trazado de rincón a rincón
+      drawDottedLine(page, valX, maxLineRight, cursorY - 2.5);
+
+      const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
+      if (valText) {
+        page.drawText(valText, { x: valX, y: cursorY, size: 8, font: fontBold, color: COLOR_TEXT });
+      }
+
+      cursorY -= 14;
+    };
 
     // TÍTULO PRINCIPAL
     const title = "ACTA DE POSTERGACIÓN DE LA SOCIALIZACIÓN DEL TRABAJO DE GRADO";
@@ -223,30 +241,16 @@ export const imprimirActaPostergacion5toAno = async (estudianteId) => {
     page.drawText("DATOS REFERENCIALES", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
     cursorY -= 14;
 
-    // Docente Tutor/a Acompañante
-    const tokensTutor = [
-      ...plainTokens("Docente Tutor/a Acompañante: ", font),
-      ...underlineTokens(docenteTutorNombre, fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensTutor, { x: MARGIN_LEFT, y: cursorY, maxWidth: CONTENT_WIDTH, fontSize: 8, lineHeight: 11, spaceFont: font });
-    cursorY -= 2;
+    // Docente Tutor/a Acompañante de Rincón a Rincón
+    drawFullReferentialField("Docente Tutor/a Acompañante: ", docenteTutorNombre);
 
-    // Modalidad de Graduación
-    const tokensMod = [
-      ...plainTokens("Modalidad de Graduación: ", font),
-      ...underlineTokens(d.modalidad_graduacion || "", fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensMod, { x: MARGIN_LEFT, y: cursorY, maxWidth: CONTENT_WIDTH, fontSize: 8, lineHeight: 11, spaceFont: font });
-    cursorY -= 2;
+    // Modalidad de Graduación de Rincón a Rincón
+    drawFullReferentialField("Modalidad de Graduación: ", d.modalidad_graduacion || "");
 
-    // Título del Trabajo de Grado
-    const tokensTitulo = [
-      ...plainTokens("Título del Trabajo de Grado: ", font),
-      ...underlineTokens(d.titulo_trabajo_grado || "", fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensTitulo, { x: MARGIN_LEFT, y: cursorY, maxWidth: CONTENT_WIDTH, fontSize: 8, lineHeight: 11, spaceFont: font });
+    // Título del Trabajo de Grado de Rincón a Rincón
+    drawFullReferentialField("Título del Trabajo de Grado: ", d.titulo_trabajo_grado || "");
 
-    cursorY -= 12;
+    cursorY -= 8;
 
     // TABLA DE INTEGRANTES DEL ECTG
     const colW1 = [20, 180, 165.65, 110];
@@ -364,7 +368,7 @@ export const imprimirActaPostergacion5toAno = async (estudianteId) => {
     page.drawText("Regístrese, comuníquese y archívese.", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
     cursorY -= 20;
 
-    // LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA EXACTA
+    // LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA SEPARADA (-2.5pt)
     const ciudad = d.lugar_ciudad || "El Alto";
     const dia = d.dia || "22";
     const mes = d.mes || "septiembre";
@@ -380,7 +384,7 @@ export const imprimirActaPostergacion5toAno = async (estudianteId) => {
 
     page.drawText(txtLugarLabel, { x: startX_LF, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
     page.drawText(txtLugarValor, { x: startX_LF + wLabelLF, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
-    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2);
+    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2.5);
 
     cursorY -= 40;
 

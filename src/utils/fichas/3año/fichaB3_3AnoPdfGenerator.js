@@ -406,8 +406,9 @@ export const imprimirFichaB3_3erAno = async (estudianteId) => {
       hLine(page, MARGIN_LEFT, RIGHT_X, currentTableY);
     });
 
-    // BORDES VERTICALES DE EVALUACIÓN
-    cX.forEach((lineX) => vLine(page, lineX, tableTop, currentTableY));
+    // BORDES VERTICALES DE EVALUACIÓN (Inician debajo de la banda verde de cabecera)
+    const headerStartY = tableTop - topHeaderH;
+    cX.forEach((lineX) => vLine(page, lineX, headerStartY, currentTableY));
 
     // FILA COMBINADA 1: PROMEDIO TOTAL (NÚMERO ENTERO)
     const finalH = 20;

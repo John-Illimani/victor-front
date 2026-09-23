@@ -88,8 +88,8 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 
       if (token.underline) {
         page.drawLine({
-          start: { x: cursorX, y: cursorY - 1.5 },
-          end: { x: cursorX + wordW, y: cursorY - 1.5 },
+          start: { x: cursorX, y: cursorY - 2.5 },
+          end: { x: cursorX + wordW, y: cursorY - 2.5 },
           thickness: 0.8,
           dashArray: [1.5, 1.5],
           color: token.color || COLOR_TEXT,
@@ -226,7 +226,7 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
       fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    // DIMENSIONES Y MÁRGENES ESTRICTOS SOLICITADOS
+    // DIMENSIONES Y MÁRGENES ESTRICTOS
     const MARGIN_TOP = 141.73;          // 5.0 cm exactos (141.73 pt)
     const MARGIN_LEFT = 85.04;          // 3.0 cm exactos (85.04 pt)
     const MARGIN_RIGHT = 51.31;         // 1.81 cm exactos (51.31 pt)
@@ -234,8 +234,26 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt exactos
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
     const RIGHT_X = MARGIN_LEFT + CONTENT_WIDTH;
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Límite estricto de rincón a rincón
 
     let cursorY = pageHeight - MARGIN_TOP;
+
+    // HELPER DE DATOS REFERENCIALES CON LÍNEAS DE RINCÓN A RINCÓN
+    const drawFullReferentialField = (label, value) => {
+      page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 8.5, font: font, color: COLOR_TEXT });
+      const labelW = fontBold.widthOfTextAtSize(label, 8.5);
+      const valX = MARGIN_LEFT + labelW;
+      
+      // Trazado de rincón a rincón
+      drawDottedLine(page, valX, maxLineRight, cursorY - 2.5);
+
+      const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
+      if (valText) {
+        page.drawText(valText, { x: valX, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
+      }
+
+      cursorY -= 14;
+    };
 
     // TÍTULOS PRINCIPALES (13 pt Bold, Centrados)
     const title1 = "FICHA C-1";
@@ -251,44 +269,20 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
     cursorY -= 14;
 
     const wT3 = fontBold.widthOfTextAtSize(title3, 11);
-    page.drawText(title3, { x: CONTENT_CENTER_X - wT3 / 2, y: cursorY, size: 11, font: fontBold, color: COLOR_TITLE });
+    page.drawText(title3, { x: CONTENT_CENTER_X - wT3 / 2, y: cursorY, size: 11, font: font, color: COLOR_TITLE });
     cursorY -= 18;
 
     // I. DATOS REFERENCIALES (9.5 pt Bold)
     page.drawText("I. DATOS REFERENCIALES", { x: MARGIN_LEFT, y: cursorY, size: 9.5, font: fontBold, color: COLOR_TEXT });
     cursorY -= 16;
 
-    // Docente Tutor/a Acompañante
-    const tokensTutor = [
-      ...plainTokens("Docente Tutor/a Acompañante: ", fontBold),
-      ...underlineTokens(docenteTutorNombre, fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensTutor, {
-      x: MARGIN_LEFT,
-      y: cursorY,
-      maxWidth: CONTENT_WIDTH,
-      fontSize: 8.5,
-      lineHeight: 12,
-      spaceFont: font
-    });
-    cursorY -= 3;
+    // Docente Tutor/a Acompañante de Rincón a Rincón
+    drawFullReferentialField("Docente Tutor/a Acompañante: ", docenteTutorNombre);
 
-    // Estudiante
-    const tokensEst = [
-      ...plainTokens("Estudiante: ", fontBold),
-      ...underlineTokens(d.estudiante_nombre || d.apellidos_nombres || "", fontBold)
-    ];
-    cursorY = drawJustifiedParagraph(page, tokensEst, {
-      x: MARGIN_LEFT,
-      y: cursorY,
-      maxWidth: CONTENT_WIDTH,
-      fontSize: 8.5,
-      lineHeight: 12,
-      spaceFont: font
-    });
-    cursorY -= 4;
+    // Estudiante de Rincón a Rincón
+    drawFullReferentialField("Estudiante: ", d.estudiante_nombre || d.apellidos_nombres || "");
 
-    page.drawText("Integrantes del ECTG:", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
+    page.drawText("Integrantes del ECTG:", { x: MARGIN_LEFT, y: cursorY, size: 8.5, font: font, color: COLOR_TEXT });
     cursorY -= 12;
 
     // TABLA INTEGRANTES DEL ECTG
@@ -339,7 +333,7 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
 
     cursorY -= 12;
 
-    // CUADRO DATOS DE LA IEPC-PEC
+    // CUADRO DATOS DE LA IEPC-PEC CON LÍNEAS DE RINCÓN A RINCÓN
     page.drawText("DATOS DE LA IEPC-PEC", { x: MARGIN_LEFT + 4, y: cursorY - 2, size: 8.5, font: fontBold, color: COLOR_TEXT });
     cursorY -= 6;
 
@@ -358,38 +352,50 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
     const fFinVal = formatFechaCorta(d.fecha_pec_fin);
 
     // Fila 1: Departamento y Distrito
-    const tokensFila1 = [
-      ...plainTokens("Departamento: ", font),
-      ...underlineTokens(depVal, fontBold),
-      ...plainTokens("                             Distrito Educativo: ", font),
-      ...underlineTokens(distVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila1, { x: MARGIN_LEFT + 6, y: iepcTopY - 12, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblDep = "Departamento: ";
+    page.drawText(lblDep, { x: MARGIN_LEFT + 6, y: iepcTopY - 12, size: 8, font, color: COLOR_TEXT });
+    const wDepLbl = font.widthOfTextAtSize(lblDep, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wDepLbl, MARGIN_LEFT + 220, iepcTopY - 14.5);
+    if (depVal) page.drawText(depVal.toUpperCase(), { x: MARGIN_LEFT + 6 + wDepLbl, y: iepcTopY - 12, size: 8, font: fontBold, color: COLOR_TEXT });
+
+    const lblDist = "Distrito Educativo: ";
+    page.drawText(lblDist, { x: MARGIN_LEFT + 230, y: iepcTopY - 12, size: 8, font, color: COLOR_TEXT });
+    const wDistLbl = font.widthOfTextAtSize(lblDist, 8);
+    drawDottedLine(page, MARGIN_LEFT + 230 + wDistLbl, maxLineRight - 6, iepcTopY - 14.5);
+    if (distVal) page.drawText(distVal.toUpperCase(), { x: MARGIN_LEFT + 230 + wDistLbl, y: iepcTopY - 12, size: 8, font: fontBold, color: COLOR_TEXT });
 
     // Fila 2: UE/CEA/CEE
-    const tokensFila2 = [
-      ...plainTokens("UE/CEA/CEE: ", font),
-      ...underlineTokens(ueVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila2, { x: MARGIN_LEFT + 6, y: iepcTopY - 23, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblUe = "UE/CEA/CEE: ";
+    page.drawText(lblUe, { x: MARGIN_LEFT + 6, y: iepcTopY - 23, size: 8, font, color: COLOR_TEXT });
+    const wUeLbl = font.widthOfTextAtSize(lblUe, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wUeLbl, maxLineRight - 6, iepcTopY - 25.5);
+    if (ueVal) page.drawText(ueVal.toUpperCase(), { x: MARGIN_LEFT + 6 + wUeLbl, y: iepcTopY - 23, size: 8, font: fontBold, color: COLOR_TEXT });
 
     // Fila 3: Subsistema y Curso/Área
-    const tokensFila3 = [
-      ...plainTokens("Subsistema: ", font),
-      ...underlineTokens(subVal, fontBold),
-      ...plainTokens("                             Curso/Área: ", font),
-      ...underlineTokens(curVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila3, { x: MARGIN_LEFT + 6, y: iepcTopY - 34, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblSub = "Subsistema: ";
+    page.drawText(lblSub, { x: MARGIN_LEFT + 6, y: iepcTopY - 34, size: 8, font, color: COLOR_TEXT });
+    const wSubLbl = font.widthOfTextAtSize(lblSub, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wSubLbl, MARGIN_LEFT + 220, iepcTopY - 36.5);
+    if (subVal) page.drawText(subVal.toUpperCase(), { x: MARGIN_LEFT + 6 + wSubLbl, y: iepcTopY - 34, size: 8, font: fontBold, color: COLOR_TEXT });
+
+    const lblCur = "Curso/Área: ";
+    page.drawText(lblCur, { x: MARGIN_LEFT + 230, y: iepcTopY - 34, size: 8, font, color: COLOR_TEXT });
+    const wCurLbl = font.widthOfTextAtSize(lblCur, 8);
+    drawDottedLine(page, MARGIN_LEFT + 230 + wCurLbl, maxLineRight - 6, iepcTopY - 36.5);
+    if (curVal) page.drawText(curVal.toUpperCase(), { x: MARGIN_LEFT + 230 + wCurLbl, y: iepcTopY - 34, size: 8, font: fontBold, color: COLOR_TEXT });
 
     // Fila 4: Desarrollo PEC
-    const tokensFila4 = [
-      ...plainTokens("Desarrollo de la PEC: Del ", font),
-      ...underlineTokens(fIniVal, fontBold),
-      ...plainTokens(" Al ", font),
-      ...underlineTokens(fFinVal, fontBold)
-    ];
-    drawJustifiedParagraph(page, tokensFila4, { x: MARGIN_LEFT + 6, y: iepcTopY - 45, maxWidth: CONTENT_WIDTH - 12, fontSize: 8, lineHeight: 11, spaceFont: font });
+    const lblPec1 = "Desarrollo de la PEC: Del ";
+    page.drawText(lblPec1, { x: MARGIN_LEFT + 6, y: iepcTopY - 45, size: 8, font, color: COLOR_TEXT });
+    const wPec1Lbl = font.widthOfTextAtSize(lblPec1, 8);
+    drawDottedLine(page, MARGIN_LEFT + 6 + wPec1Lbl, MARGIN_LEFT + 220, iepcTopY - 47.5);
+    if (fIniVal) page.drawText(fIniVal, { x: MARGIN_LEFT + 6 + wPec1Lbl, y: iepcTopY - 45, size: 8, font: fontBold, color: COLOR_TEXT });
+
+    const lblPec2 = "Al ";
+    page.drawText(lblPec2, { x: MARGIN_LEFT + 230, y: iepcTopY - 45, size: 8, font, color: COLOR_TEXT });
+    const wPec2Lbl = font.widthOfTextAtSize(lblPec2, 8);
+    drawDottedLine(page, MARGIN_LEFT + 230 + wPec2Lbl, maxLineRight - 6, iepcTopY - 47.5);
+    if (fFinVal) page.drawText(fFinVal, { x: MARGIN_LEFT + 230 + wPec2Lbl, y: iepcTopY - 45, size: 8, font: fontBold, color: COLOR_TEXT });
 
     vLine(page, MARGIN_LEFT, iepcTopY, iepcTopY - iepcH);
     vLine(page, RIGHT_X, iepcTopY, iepcTopY - iepcH);
@@ -506,7 +512,7 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
 
     cursorY -= rowSugH + 20;
 
-    // LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA EXACTA
+    // LUGAR Y FECHA CENTRADO DINÁMICAMENTE CON LÍNEA PUNTEADA EXACTA SEPARADA (-2.5pt)
     const ciudad = d.lugar_ciudad || "El Alto";
     const dia = d.dia || "21";
     const mes = d.mes || "septiembre";
@@ -522,7 +528,7 @@ export const imprimirFichaC1_5toAno = async (estudianteId) => {
 
     page.drawText(txtLugarLabel, { x: startX_LF, y: cursorY, size: 8.5, font, color: COLOR_TEXT });
     page.drawText(txtLugarValor, { x: startX_LF + wLabelLF, y: cursorY, size: 8.5, font: fontBold, color: COLOR_TEXT });
-    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2);
+    drawDottedLine(page, startX_LF + wLabelLF, startX_LF + totalLFWidth, cursorY - 2.5);
 
     cursorY -= 35;
 

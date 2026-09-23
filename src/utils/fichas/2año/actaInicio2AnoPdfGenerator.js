@@ -83,6 +83,7 @@ export const imprimirActaInicio2doAno = async (estudianteId) => {
     const MARGIN_RIGHT = 51.31; // 1.81 cm exactos
     const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;       // 322.865 pt
+    const maxLineRight = pageWidth - MARGIN_RIGHT; // Límite estricto del margen derecho
 
     // =========================================================================
     // 1. TÍTULO Y SUBTÍTULO PRINCIPAL (ARIAL BOLD 13 PT)
@@ -121,6 +122,29 @@ export const imprimirActaInicio2doAno = async (estudianteId) => {
 
     cursorY -= 10;
 
+    // Helper para campos completos de 1 línea con puntos de fondo
+    const drawFullReferentialField = (label, value) => {
+      page.drawText(label, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font, color: COLOR_TEXT });
+      const labelW = font.widthOfTextAtSize(label, 9);
+      const valX = MARGIN_LEFT + 15 + labelW;
+      
+      // Linea de puntos de fondo de punta a punta
+      page.drawLine({
+        start: { x: valX, y: cursorY - 1 },
+        end: { x: maxLineRight, y: cursorY - 1 },
+        thickness: 0.8,
+        dashArray: [1, 1.5],
+        color: COLOR_TEXT,
+      });
+
+      const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
+      if (valText) {
+        page.drawText(valText, { x: valX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+      }
+
+      cursorY -= 14;
+    };
+
     // =========================================================================
     // 2. DATOS REFERENCIALES DEL ESTUDIANTE (9 PT)
     // =========================================================================
@@ -135,77 +159,49 @@ export const imprimirActaInicio2doAno = async (estudianteId) => {
     cursorY -= 16;
 
     // Apellidos y nombres
-    const lblNom = "Apellidos y Nombres del Estudiante: ";
-    page.drawText(lblNom, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font, color: COLOR_TEXT });
-    const lblNomW = font.widthOfTextAtSize(lblNom, 9);
-    const valNomX = MARGIN_LEFT + 15 + lblNomW;
     const valNom = (d.apellidos_nombres || `${estudianteGeneral.nombre || ""} ${estudianteGeneral.apellido || ""}`).toUpperCase();
-    if (valNom.trim()) {
-      page.drawText(valNom, { x: valNomX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
-    }
-    const valNomW = fontBold.widthOfTextAtSize(valNom, 9);
-    page.drawLine({
-      start: { x: valNomX, y: cursorY - 2 },
-      end: { x: valNomX + Math.max(valNomW, 200), y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
-
-    cursorY -= 14;
+    drawFullReferentialField("Apellidos y Nombres del Estudiante: ", valNom);
 
     // ESFM/UA
-    const lblEsfm = "ESFM/UA: ";
-    page.drawText(lblEsfm, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font, color: COLOR_TEXT });
-    const lblEsfmW = font.widthOfTextAtSize(lblEsfm, 9);
-    const valEsfmX = MARGIN_LEFT + 15 + lblEsfmW;
     const valEsfm = (d.esfm_ua || estudianteGeneral.esfm_ua || "ESFM Simón Bolívar / UA El Alto").toUpperCase();
-    page.drawText(valEsfm, { x: valEsfmX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
-    const valEsfmW = fontBold.widthOfTextAtSize(valEsfm, 9);
-    page.drawLine({
-      start: { x: valEsfmX, y: cursorY - 2 },
-      end: { x: valEsfmX + Math.max(valEsfmW, 200), y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
-
-    cursorY -= 14;
+    drawFullReferentialField("ESFM/UA: ", valEsfm);
 
     // Especialidad y Paralelo
     const lblEsp = "Especialidad: ";
     page.drawText(lblEsp, { x: MARGIN_LEFT + 15, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblEspW = font.widthOfTextAtSize(lblEsp, 9);
     const valEspX = MARGIN_LEFT + 15 + lblEspW;
+    
+    page.drawLine({
+      start: { x: valEspX, y: cursorY - 1 },
+      end: { x: MARGIN_LEFT + 340, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valEsp = (d.especialidad || estudianteGeneral.especialidad || "").toUpperCase();
     if (valEsp) {
       page.drawText(valEsp, { x: valEspX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    const valEspW = fontBold.widthOfTextAtSize(valEsp, 9);
-    page.drawLine({
-      start: { x: valEspX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + 340, y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
 
     const lblPar = "Paralelo: ";
     page.drawText(lblPar, { x: MARGIN_LEFT + 350, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblParW = font.widthOfTextAtSize(lblPar, 9);
     const valParX = MARGIN_LEFT + 350 + lblParW;
+
+    page.drawLine({
+      start: { x: valParX, y: cursorY - 1 },
+      end: { x: maxLineRight, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valPar = (d.paralelo || "").toUpperCase();
     if (valPar) {
       page.drawText(valPar, { x: valParX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    const valParW = fontBold.widthOfTextAtSize(valPar, 9);
-    page.drawLine({
-      start: { x: valParX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
 
     cursorY -= 16;
 
@@ -351,23 +347,24 @@ export const imprimirActaInicio2doAno = async (estudianteId) => {
     });
     cursorY -= 15;
 
-    const drawLineField = (label, value, endX = MARGIN_LEFT + CONTENT_WIDTH) => {
+    const drawLineField = (label, value) => {
       page.drawText(label, { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
       const labelW = font.widthOfTextAtSize(label, 9);
       const valX = MARGIN_LEFT + labelW;
       
+      page.drawLine({
+        start: { x: valX, y: cursorY - 1 },
+        end: { x: maxLineRight, y: cursorY - 1 },
+        thickness: 0.8,
+        dashArray: [1, 1.5],
+        color: COLOR_TEXT,
+      });
+
       const valText = (value && String(value).trim() !== "" ? value : "").toUpperCase();
       if (valText) {
         page.drawText(valText, { x: valX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
       }
-      
-      page.drawLine({
-        start: { x: valX, y: cursorY - 2 },
-        end: { x: endX, y: cursorY - 2 },
-        thickness: 0.8,
-        dashArray: [1.5, 1.5],
-        color: COLOR_TEXT,
-      });
+
       cursorY -= 14;
     };
 
@@ -378,32 +375,37 @@ export const imprimirActaInicio2doAno = async (estudianteId) => {
     page.drawText("Distrito Educativo: ", { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblDistW = font.widthOfTextAtSize("Distrito Educativo: ", 9);
     const valDistX = MARGIN_LEFT + lblDistW;
+
+    page.drawLine({
+      start: { x: valDistX, y: cursorY - 1 },
+      end: { x: MARGIN_LEFT + 200, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valDist = (d.distrito_educativo || "").toUpperCase();
     if (valDist) {
       page.drawText(valDist, { x: valDistX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    page.drawLine({
-      start: { x: valDistX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + 200, y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
 
     page.drawText("UE/CEA/CEE: ", { x: MARGIN_LEFT + 210, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblUeW = font.widthOfTextAtSize("UE/CEA/CEE: ", 9);
     const valUeX = MARGIN_LEFT + 210 + lblUeW;
+
+    page.drawLine({
+      start: { x: valUeX, y: cursorY - 1 },
+      end: { x: maxLineRight, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valUe = (d.ue_cea_cee || "").toUpperCase();
     if (valUe) {
       page.drawText(valUe, { x: valUeX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    page.drawLine({
-      start: { x: valUeX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
+
     cursorY -= 14;
 
     // Especialidad IEPC
@@ -416,67 +418,74 @@ export const imprimirActaInicio2doAno = async (estudianteId) => {
     page.drawText("Subsistema: ", { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblSubW = font.widthOfTextAtSize("Subsistema: ", 9);
     const valSubX = MARGIN_LEFT + lblSubW;
-    const valSub = (d.subsistema || "Educación Regular").toUpperCase();
-    page.drawText(valSub, { x: valSubX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+
     page.drawLine({
-      start: { x: valSubX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + 260, y: cursorY - 2 },
+      start: { x: valSubX, y: cursorY - 1 },
+      end: { x: MARGIN_LEFT + 260, y: cursorY - 1 },
       thickness: 0.8,
-      dashArray: [1.5, 1.5],
+      dashArray: [1, 1.5],
       color: COLOR_TEXT,
     });
+
+    const valSub = (d.subsistema || "Educación Regular").toUpperCase();
+    page.drawText(valSub, { x: valSubX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
 
     page.drawText("Nivel: ", { x: MARGIN_LEFT + 270, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblNivW = font.widthOfTextAtSize("Nivel: ", 9);
     const valNivX = MARGIN_LEFT + 270 + lblNivW;
+
+    page.drawLine({
+      start: { x: valNivX, y: cursorY - 1 },
+      end: { x: maxLineRight, y: cursorY - 1 },
+      thickness: 0.8,
+      dashArray: [1, 1.5],
+      color: COLOR_TEXT,
+    });
+
     const valNiv = (d.nivel || "").toUpperCase();
     if (valNiv) {
       page.drawText(valNiv, { x: valNivX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     }
-    page.drawLine({
-      start: { x: valNivX, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: cursorY - 2 },
-      thickness: 0.8,
-      dashArray: [1.5, 1.5],
-      color: COLOR_TEXT,
-    });
+
     cursorY -= 14;
 
     // Fecha de desarrollo de la IEPC PEC
     page.drawText("Fecha de desarrollo de la IEPC PEC: del ", { x: MARGIN_LEFT, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const lblF1W = font.widthOfTextAtSize("Fecha de desarrollo de la IEPC PEC: del ", 9);
     const valF1X = MARGIN_LEFT + lblF1W;
-    const valF1 = formatFecha(d.fecha_inicio_pec);
-    page.drawText(valF1, { x: valF1X, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
-    const valF1W = fontBold.widthOfTextAtSize(valF1, 9);
+
     page.drawLine({
-      start: { x: valF1X, y: cursorY - 2 },
-      end: { x: valF1X + Math.max(valF1W, 120), y: cursorY - 2 },
+      start: { x: valF1X, y: cursorY - 1 },
+      end: { x: valF1X + 120, y: cursorY - 1 },
       thickness: 0.8,
-      dashArray: [1.5, 1.5],
+      dashArray: [1, 1.5],
       color: COLOR_TEXT,
     });
 
-    const lblAlX = valF1X + Math.max(valF1W, 120) + 10;
+    const valF1 = formatFecha(d.fecha_inicio_pec);
+    page.drawText(valF1, { x: valF1X, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+
+    const lblAlX = valF1X + 130;
     page.drawText("al ", { x: lblAlX, y: cursorY, size: 9, font, color: COLOR_TEXT });
     const valF2X = lblAlX + font.widthOfTextAtSize("al ", 9);
-    const valF2 = formatFecha(d.fecha_conclusion_pec);
-    page.drawText(valF2, { x: valF2X, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+
     page.drawLine({
-      start: { x: valF2X, y: cursorY - 2 },
-      end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: cursorY - 2 },
+      start: { x: valF2X, y: cursorY - 1 },
+      end: { x: maxLineRight, y: cursorY - 1 },
       thickness: 0.8,
-      dashArray: [1.5, 1.5],
+      dashArray: [1, 1.5],
       color: COLOR_TEXT,
     });
+
+    const valF2 = formatFecha(d.fecha_conclusion_pec);
+    page.drawText(valF2, { x: valF2X, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+
     cursorY -= 14;
 
     // Director(a) de UE/CEA/CEE
     drawLineField("Director(a) de UE/CEA/CEE: ", d.director_ue_nombre);
 
-    // =========================================================================
-    // OBTENCIÓN IDÉNTICA A StudentsManagement (da_nombre y da_apellido)
-    // =========================================================================
+    // Docente Acompañante ESFM/UA
     const docenteAcompananteStr =
       d.docente_acompanante_nombre ||
       (estudianteGeneral.da_nombre ? `${estudianteGeneral.da_nombre} ${estudianteGeneral.da_apellido || ""}`.trim() : "") ||

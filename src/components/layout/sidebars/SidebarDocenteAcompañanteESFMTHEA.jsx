@@ -37,11 +37,11 @@ const MENU_ITEMS_DOCENTE_ACOMPANANTE = [
   //   link: "/docente-acompanante/seguimiento", 
   //   icon: TrendingUp 
   // },
-  { 
-    name: "Verificar integridad", 
-    link: "/docente-acompanante/verificar-integridad", 
-    icon: ShieldCheck 
-  },
+  // { 
+  //   name: "Verificar integridad", 
+  //   link: "/docente-acompanante/verificar-integridad", 
+  //   icon: ShieldCheck 
+  // },
   { 
     name: "Reportes", 
     link: "/docente-acompanante/reportes", 

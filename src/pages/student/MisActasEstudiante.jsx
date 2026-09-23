@@ -60,16 +60,18 @@ const COMPONENTES_ACTAS_MAP = {
   "5_ACTA_POSTERGACION": ActaPostergacion_5toAno
 };
 
-// HELPER DE NORMALIZACIÓN DE AÑO DE FORMACIÓN
+// HELPER ROBUSTO DE NORMALIZACIÓN DE AÑO
 const normalizarAnoStr = (cadena) => {
-  if (!cadena) return '';
+  if (!cadena) return "1er Año";
   const c = cadena.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (c.includes("1") || c.includes("primer")) return "1er Año";
-  if (c.includes("2") || c.includes("segundo")) return "2do Año";
-  if (c.includes("3") || c.includes("tercer")) return "3er Año";
-  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  
   if (c.includes("5") || c.includes("quinto")) return "5to Año";
-  return cadena;
+  if (c.includes("4") || c.includes("cuarto")) return "4to Año";
+  if (c.includes("3") || c.includes("tercer") || c.includes("tercero")) return "3er Año";
+  if (c.includes("2") || c.includes("segundo")) return "2do Año";
+  if (c.includes("1") || c.includes("primer") || c.includes("primero")) return "1er Año";
+  
+  return "1er Año";
 };
 
 export const MisActasEstudiante = () => {
@@ -77,6 +79,7 @@ export const MisActasEstudiante = () => {
   const [errorMessage, setErrorMessage] = useState(null);
   
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
+  const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [actasStatusMap, setActasStatusMap] = useState({});
 
   // ESTADO DE VISTA DE ACTA ACTIVA
@@ -96,21 +99,48 @@ export const MisActasEstudiante = () => {
           return;
         }
 
-        const student = JSON.parse(savedUserStr);
+        let student = JSON.parse(savedUserStr);
+        let studentId = student.id || student.estudiante_id;
+
+        // 1. OBTENER INFORMACIÓN FRESCA DESDE LA API DE ESTUDIANTES
+        try {
+          const estudiantesList = await studentService.getStudents();
+          if (Array.isArray(estudiantesList)) {
+            const studentApi = estudiantesList.find(u => 
+              String(u.id) === String(studentId) || 
+              String(u.ci) === String(student.ci) || 
+              String(u.correo) === String(student.correo)
+            );
+            if (studentApi) {
+              student = { ...student, ...studentApi };
+              studentId = studentApi.id || studentId;
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo refrescar el perfil desde la API de estudiantes, usando sesión local:", e);
+        }
+
         setEstudianteLogueado(student);
 
-        const studentId = student.id || student.estudiante_id || student.ci;
+        // 2. EXTRAER Y NORMALIZAR EL AÑO DE FORMACIÓN DE LA API
+        const anoCrudo = student.ano_formacion || student.ano || student.curso || student.nivel || "";
+        const anoEst = normalizarAnoStr(anoCrudo);
+        setAnoDetectado(anoEst);
+
         if (!studentId) {
           setErrorMessage("Identificador de estudiante no válido.");
           setLoading(false);
           return;
         }
 
-        // Consultar los datos almacenados para cada acta
+        // 3. FILTRAR Y CONSULTAR LOS DATOS ALMACENADOS PARA CADA ACTA CORRESPONDIENTE
+        const actasCorrespondientes = CATALAGO_ACTAS_ESTUDIANTE.filter(
+          acta => normalizarAnoStr(acta.ano) === anoEst
+        );
+
         const statusMap = {};
-        
         await Promise.all(
-          CATALAGO_ACTAS_ESTUDIANTE.map(async (acta) => {
+          actasCorrespondientes.map(async (acta) => {
             try {
               const res = await studentService.getFicha(studentId, acta.codigo);
               const datos = res?.datos || {};
@@ -139,10 +169,9 @@ export const MisActasEstudiante = () => {
     cargarActasEstudiante();
   }, []);
 
-  // FILTRAR ACTAS POR EL AÑO DE FORMACIÓN DEL ESTUDIANTE LOGUEADO
-  const anoEstudiante = normalizarAnoStr(estudianteLogueado?.ano_formacion || '1er Año');
+  // FILTRAR ACTAS POR EL AÑO DETECTADO DEL ESTUDIANTE
   const misActasCorrespondientes = CATALAGO_ACTAS_ESTUDIANTE.filter(
-    acta => normalizarAnoStr(acta.ano) === anoEstudiante
+    acta => normalizarAnoStr(acta.ano) === anoDetectado
   );
 
   // ABRIR CUALQUIER ACTA SIEMPRE EN SOLO LECTURA
@@ -201,7 +230,7 @@ export const MisActasEstudiante = () => {
 
           <div className="flex items-center gap-2">
             <span className="px-3.5 py-1.5 rounded-2xl bg-slate-100 border border-slate-200 text-slate-800 text-xs font-black uppercase">
-              {anoEstudiante}
+              {anoDetectado}
             </span>
           </div>
         </div>
@@ -212,7 +241,7 @@ export const MisActasEstudiante = () => {
         <div className="border-b border-slate-100 pb-3">
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
             <FileCheck2 size={18} className="text-[#801B28]" />
-            Actas Oficiales de Evaluación — {anoEstudiante}
+            Actas Oficiales de Evaluación — {anoDetectado}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Puedes previsualizar el contenido de cualquier acta en modo de solo lectura.
@@ -268,7 +297,7 @@ export const MisActasEstudiante = () => {
           </div>
         ) : (
           <div className="p-8 text-center text-slate-400 font-medium text-xs border border-dashed border-slate-200 rounded-2xl">
-            No existen actas programadas para el año de formación {anoEstudiante}.
+            No existen actas programadas para el año de formación {anoDetectado}.
           </div>
         )}
       </div>
