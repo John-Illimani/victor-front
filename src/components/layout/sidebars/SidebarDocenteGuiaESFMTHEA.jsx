@@ -27,11 +27,11 @@ const MENU_ITEMS_DOCENTE_GUIA = [
     link: "/docente-guia/fichas-asignadas", 
     icon: ClipboardCheck 
   },
-  { 
-    name: "Seguimiento", 
-    link: "/docente-guia/seguimiento", 
-    icon: TrendingUp 
-  },
+  // { 
+  //   name: "Seguimiento", 
+  //   link: "/docente-guia/seguimiento", 
+  //   icon: TrendingUp 
+  // },
   
   { 
     name: "Reportes", 

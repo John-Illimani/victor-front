@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { actaConformacionService } from '../../../services/fichas/1año/actaConformacionService';
 
 // =============================================================================
-// COLORES INSTITUCIONALES OFICIALES (ANALIZADOS DEL PDF)
+// COLORES INSTITUCIONALES OFICIALES
 // =============================================================================
 const COLOR_TEXT = rgb(0, 0, 0);
 const COLOR_TITLE = rgb(201 / 255, 167 / 255, 81 / 255);     // Dorado oficial (#C9A751)
@@ -10,7 +10,7 @@ const COLOR_TABLE_HEADER = rgb(247 / 255, 181 / 255, 0);   // Amarillo instituci
 const COLOR_BORDER = rgb(0, 0, 0);
 
 // =============================================================================
-// HELPERS DE LAYOUT (HELVETICA = ARIAL)
+// HELPERS DE LAYOUT Y FORMATO
 // =============================================================================
 
 function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHeight, spaceFont }) {
@@ -45,6 +45,7 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 
     let cursorX = x;
     line.forEach((token) => {
+      const wordW = token.font.widthOfTextAtSize(token.text, fontSize);
       page.drawText(token.text, {
         x: cursorX,
         y: cursorY,
@@ -52,7 +53,19 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
         font: token.font,
         color: token.color || COLOR_TEXT,
       });
-      cursorX += token.font.widthOfTextAtSize(token.text, fontSize) + gapWidth;
+
+      // Si el token representa datos rellenados, se dibuja la línea punteada justo por debajo
+      if (token.underline) {
+        page.drawLine({
+          start: { x: cursorX, y: cursorY - 1.5 },
+          end: { x: cursorX + wordW, y: cursorY - 1.5 },
+          thickness: 0.8,
+          dashArray: [1.5, 1.5],
+          color: token.color || COLOR_TEXT,
+        });
+      }
+
+      cursorX += wordW + gapWidth;
     });
 
     cursorY -= lineHeight;
@@ -64,6 +77,9 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 const plainTokens = (text, font, color) =>
   text.split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color }));
 
+const underlineTokens = (text, font, color) =>
+  text.split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
+
 function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, rows, headers, font, fontBold }) {
   const colWidths = colFractions.map((f) => f * width);
   const colX = [x];
@@ -73,7 +89,7 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
   const top = y;
   const bottom = y - totalHeight;
 
-  // Fondo amarillo/dorado del encabezado
+  // Fondo amarillo institucional del encabezado
   page.drawRectangle({
     x,
     y: top - headerHeight,
@@ -94,20 +110,20 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
     page.drawLine({ start: { x: lineX, y: top }, end: { x: lineX, y: bottom }, thickness: 0.8, color: COLOR_BORDER });
   });
 
-  // Texto del encabezado (Arial/Helvetica Bold 9.5pt)
+  // Texto del encabezado en tamaño 12 pt
   headers.forEach((text, i) => {
     const colCenter = colX[i] + colWidths[i] / 2;
-    const textWidth = fontBold.widthOfTextAtSize(text, 9.5);
+    const textWidth = fontBold.widthOfTextAtSize(text, 12);
     page.drawText(text, {
       x: colCenter - textWidth / 2,
-      y: top - headerHeight / 2 - 3.5,
-      size: 9.5,
+      y: top - headerHeight / 2 - 4,
+      size: 12,
       font: fontBold,
       color: COLOR_TEXT,
     });
   });
 
-  // Filas de datos (Arial/Helvetica Regular/Bold 9pt)
+  // Filas de datos en tamaño 9 pt
   rows.forEach((rowValues, r) => {
     const rowTop = top - headerHeight - rowHeight * r;
     rowValues.forEach((cell, c) => {
@@ -120,7 +136,7 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
       
       page.drawText(cell.text, {
         x: textX,
-        y: rowTop - rowHeight / 2 - 3.5,
+        y: rowTop - rowHeight / 2 - 3,
         size: 9,
         font: cellFont,
         color: COLOR_TEXT,
@@ -159,23 +175,20 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const page = pdfDoc.getPages()[0];
 
-    // =========================================================================
-    // FORZAR TAMAÑO CARTA (LETTER: 8.5 x 11 pulgadas -> 612 x 792 pt)
-    // =========================================================================
+    // HOJA TAMAÑO CARTA Y MÁRGENES SOLICITADOS (3 cm izq, 1.81 cm der)
     page.setSize(612, 792);
     const pageWidth = 612;
 
-    // FUENTE ARIAL (Helvetica es la fuente nativa idéntica a Arial en PDF)
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // MARGEN IZQUIERDO DE 3 CM (85.04 pt) Y DERECHO (70 pt)
-    const MARGIN_LEFT = 85.04;
-    const MARGIN_RIGHT = 70;
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT);
+    const MARGIN_LEFT = 85.04;  // 3 cm exactos
+    const MARGIN_RIGHT = 51.31; // 1.81 cm exactos
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
+    const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;       // 322.865 pt
 
     // =========================================================================
-    // 1. TÍTULO EN DORADO INSTITUCIONAL (11pt Bold)
+    // 1. TÍTULO PRINCIPAL (13pt Bold Arial/Helvetica, Centrado en Área Útil)
     // =========================================================================
     let cursorY = 665;
     const titleLines = [
@@ -183,35 +196,41 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       'EDUCATIVA PRODUCCIÓN DE CONOCIMIENTOS PEC',
     ];
     titleLines.forEach((line) => {
-      const w = fontBold.widthOfTextAtSize(line, 11);
-      page.drawText(line, { x: pageWidth / 2 - w / 2, y: cursorY, size: 11, font: fontBold, color: COLOR_TITLE });
-      cursorY -= 15;
+      const w = fontBold.widthOfTextAtSize(line, 13);
+      page.drawText(line, {
+        x: CONTENT_CENTER_X - w / 2,
+        y: cursorY,
+        size: 13,
+        font: fontBold,
+        color: COLOR_TITLE,
+      });
+      cursorY -= 17;
     });
 
     cursorY -= 6;
 
     // =========================================================================
-    // 2. PÁRRAFO INTRODUCTORIO (10pt Regular / Bold)
+    // 2. PÁRRAFO INTRODUCTORIO (DATOS SUBRAYADOS CON LÍNEAS PUNTEADAS - 9pt)
     // =========================================================================
     const integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
 
     const intro = [
       ...plainTokens('En la ciudad/localidad de', font),
-      ...plainTokens(`${d.lugar_ciudad || 'El Alto'},`, fontBold),
+      ...underlineTokens(`${d.lugar_ciudad || 'El Alto'},`, fontBold),
       ...plainTokens('del departamento de', font),
-      ...plainTokens(`${d.departamento || 'La Paz'},`, fontBold),
+      ...underlineTokens(`${d.departamento || 'La Paz'},`, fontBold),
       ...plainTokens('en predios de la ESFM/UA', font),
-      ...plainTokens(`${d.esfm_predios || 'ESFM Simón Bolívar / UA El Alto'},`, font),
+      ...underlineTokens(`${d.esfm_predios || 'ESFM Simón Bolívar / UA El Alto'},`, font),
       ...plainTokens('a horas', font),
-      ...plainTokens(`${d.hora || '09:00'}`, font),
+      ...underlineTokens(`${d.hora || '09:00'}`, font),
       ...plainTokens('del día', font),
-      ...plainTokens(`${d.dia || '17'},`, font),
+      ...underlineTokens(`${d.dia || '17'},`, font),
       ...plainTokens('del mes de', font),
-      ...plainTokens(`${d.mes || 'septiembre'},`, font),
+      ...underlineTokens(`${d.mes || 'septiembre'},`, font),
       ...plainTokens('de la gestión', font),
-      ...plainTokens(`${d.gestion || '2026'},`, fontBold),
+      ...underlineTokens(`${d.gestion || '2026'},`, fontBold),
       ...plainTokens('los estudiantes de primer año de formación de la especialidad de', font),
-      ...plainTokens(`${(d.especialidad || 'EDUCACIÓN INICIAL EN FAMILIA COMUNITARIA').toUpperCase()},`, fontBold),
+      ...underlineTokens(`${(d.especialidad || 'EDUCACIÓN INICIAL EN FAMILIA COMUNITARIA').toUpperCase()},`, fontBold),
       ...plainTokens('se reúnen con la finalidad de conformar el Equipo Comunitario IEPC-PEC, por los siguientes integrantes:', font),
     ];
 
@@ -219,18 +238,18 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       x: MARGIN_LEFT,
       y: cursorY,
       maxWidth: CONTENT_WIDTH,
-      fontSize: 10,
-      lineHeight: 14,
+      fontSize: 9,
+      lineHeight: 13.5,
       spaceFont: font,
     });
 
     cursorY -= 12;
 
     // =========================================================================
-    // 3. TABLA DE INTEGRANTES CENTRADA (360 pt de ancho)
+    // 3. TABLA DE INTEGRANTES CENTRADA (ENCABEZADOS 12pt, CONTENIDO 9pt)
     // =========================================================================
     const TABLE_WIDTH = 360; 
-    const tableX = (pageWidth - TABLE_WIDTH) / 2;
+    const tableX = CONTENT_CENTER_X - TABLE_WIDTH / 2;
 
     const filas = [0, 1, 2].map((i) => {
       const int = integrantes[i];
@@ -252,7 +271,7 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       y: cursorY,
       width: TABLE_WIDTH,
       colFractions: [0.10, 0.65, 0.25],
-      headerHeight: 22,
+      headerHeight: 24,
       rowHeight: 20,
       headers: ['No.', 'NOMBRES Y APELLIDOS', 'C.I.'],
       rows: filas,
@@ -260,15 +279,15 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       fontBold,
     });
 
-    cursorY -= 22;
+    cursorY -= 20;
 
     // =========================================================================
-    // 4. RESPONSABILIDADES Y COMPROMISOS (10pt Regular / Bold)
+    // 4. RESPONSABILIDADES Y COMPROMISOS (9pt Regular / Bold)
     // =========================================================================
     page.drawText('Asumiendo las siguientes responsabilidades y compromisos:', {
-      x: MARGIN_LEFT, y: cursorY, size: 10, font: fontBold, color: COLOR_TEXT,
+      x: MARGIN_LEFT, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT,
     });
-    cursorY -= 16;
+    cursorY -= 14;
 
     const compromisos = [
       'Implementar procesos de Investigación Educativa Producción de Conocimientos durante la PEC de la presente gestión en la UE/CEA/CEE asignada.',
@@ -283,36 +302,52 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
         x: MARGIN_LEFT,
         y: cursorY,
         maxWidth: CONTENT_WIDTH,
-        fontSize: 10,
-        lineHeight: 13.5,
+        fontSize: 9,
+        lineHeight: 13,
         spaceFont: font,
       });
-      cursorY -= 8;
+      cursorY -= 6;
     });
 
-    cursorY -= 6;
+    cursorY -= 8;
 
     // =========================================================================
-    // 5. LUGAR Y FECHA (10pt)
+    // 5. LUGAR Y FECHA (CENTRADO SOBRE ÁREA ÚTIL EN 9pt CON LÍNEA PUNTEADA)
     // =========================================================================
-    const fechaPie = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || '17'} de ${d.mes || 'septiembre'} de ${d.gestion || '2026'}`;
-    const fechaX = MARGIN_LEFT + 150;
+    const lblFecha = 'Lugar y fecha: ';
+    const valFecha = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || '17'} de ${d.mes || 'septiembre'} de ${d.gestion || '2026'}`;
     
-    page.drawText('Lugar y fecha: ', { x: fechaX, y: cursorY, size: 10, font, color: COLOR_TEXT });
-    page.drawText(fechaPie, { x: fechaX + font.widthOfTextAtSize('Lugar y fecha: ', 10), y: cursorY, size: 10, font: fontBold, color: COLOR_TEXT });
+    const wLbl = font.widthOfTextAtSize(lblFecha, 9);
+    const wVal = fontBold.widthOfTextAtSize(valFecha, 9);
+    const totalFechaW = wLbl + wVal;
+    
+    const fechaStartX = CONTENT_CENTER_X - totalFechaW / 2;
 
-    cursorY -= 40;
+    page.drawText(lblFecha, { x: fechaStartX, y: cursorY, size: 9, font, color: COLOR_TEXT });
+    
+    const valStartX = fechaStartX + wLbl;
+    page.drawText(valFecha, { x: valStartX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
+    
+    // Línea punteada bajo la fecha
+    page.drawLine({
+      start: { x: valStartX, y: cursorY - 1.5 },
+      end: { x: valStartX + wVal, y: cursorY - 1.5 },
+      thickness: 0.8,
+      dashArray: [1.5, 1.5],
+      color: COLOR_TEXT,
+    });
+
+    cursorY -= 45;
 
     // =========================================================================
-    // 6. FIRMAS DE ESTUDIANTES (9pt)
+    // 6. FIRMAS DE ESTUDIANTES (CENTRADO INFERIOR DISTRIBUIDO)
     // =========================================================================
-    const signatureWidth = 75;
+    const signatureWidth = 95;
     const totalSignatures = 3;
-    const rightAvailableWidth = pageWidth - MARGIN_RIGHT - fechaX;
-    const gapBetween = (rightAvailableWidth - (signatureWidth * totalSignatures)) / (totalSignatures - 1);
+    const gapBetween = (CONTENT_WIDTH - signatureWidth * totalSignatures) / (totalSignatures - 1);
     
     for (let i = 0; i < totalSignatures; i++) {
-      const sigX = fechaX + i * (signatureWidth + gapBetween);
+      const sigX = MARGIN_LEFT + i * (signatureWidth + gapBetween);
       
       page.drawLine({
         start: { x: sigX, y: cursorY },
@@ -322,23 +357,41 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       });
       const label = 'Estudiante';
       const labelW = font.widthOfTextAtSize(label, 9);
-      page.drawText(label, { x: sigX + signatureWidth / 2 - labelW / 2, y: cursorY - 11, size: 9, font, color: COLOR_TEXT });
+      page.drawText(label, {
+        x: sigX + signatureWidth / 2 - labelW / 2,
+        y: cursorY - 12,
+        size: 9,
+        font,
+        color: COLOR_TEXT,
+      });
     }
 
-    cursorY -= 38;
+    cursorY -= 45;
 
     // =========================================================================
-    // 7. FIRMA VO.BO. (9pt)
+    // 7. FIRMA VO.BO. (CENTRADO PERFECTO)
     // =========================================================================
-    const voboX = MARGIN_LEFT + 240;
     const voboLine = '..........................................................';
     const voboText = 'Vo.Bo. Coordinación Académica IEPC-PEC';
 
-    page.drawText(voboLine, { x: voboX, y: cursorY, size: 10, font, color: COLOR_TEXT });
-    
+    const voboLineW = font.widthOfTextAtSize(voboLine, 9);
     const voboTextW = font.widthOfTextAtSize(voboText, 9);
-    const lineW = font.widthOfTextAtSize(voboLine, 10);
-    page.drawText(voboText, { x: voboX + (lineW / 2) - (voboTextW / 2), y: cursorY - 11, size: 9, font, color: COLOR_TEXT });
+
+    page.drawText(voboLine, {
+      x: CONTENT_CENTER_X - voboLineW / 2,
+      y: cursorY,
+      size: 9,
+      font,
+      color: COLOR_TEXT,
+    });
+    
+    page.drawText(voboText, {
+      x: CONTENT_CENTER_X - voboTextW / 2,
+      y: cursorY - 12,
+      size: 9,
+      font,
+      color: COLOR_TEXT,
+    });
 
     // =========================================================================
     // 8. RENDERIZAR Y MOSTRAR EN NAVEGADOR

@@ -11,7 +11,13 @@ import {
   Info
 } from "lucide-react";
 import { actaService } from "../../../services/actaService";
-import { imprimirActaConformacion1erAno } from "../../../utils/fichas/1año/actaPdfGenerator";
+
+// IMPORTACIÓN EXCLUSIVA DE CONTROLADORES
+import { FICHAS_1ER_ANO, ejecutarImpresion1erAno } from "../../../controllers/fichas/fichas1AnoController";
+import { FICHAS_2DO_ANO, ejecutarImpresion2doAno } from "../../../controllers/fichas/fichas2AnoController";
+import { FICHAS_3ER_ANO, ejecutarImpresion3erAno } from "../../../controllers/fichas/fichas3AnoController";
+import { FICHAS_4TO_ANO, ejecutarImpresion4toAno } from "../../../controllers/fichas/fichas4AnoController";
+import { FICHAS_5TO_ANO, ejecutarImpresion5toAno } from "../../../controllers/fichas/fichas5AnoController";
 
 export const ActaAnoView = ({ gestion, ano }) => {
   const [actas, setActas] = useState([]);
@@ -23,90 +29,22 @@ export const ActaAnoView = ({ gestion, ano }) => {
   const [selectedActa, setSelectedActa] = useState(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
-  // Modal de Notificaciones UI (Reemplazo de Alerts)
+  // Modal de Notificaciones UI
   const [systemModal, setSystemModal] = useState({
     show: false,
     title: "",
     message: "",
-    type: "info" // "error" | "success" | "info"
+    type: "info"
   });
 
+  // Mapeo dinámico de fichas por año
   const getFichasByAno = (anoFormacion) => {
     const a = (anoFormacion || ano || "").toString().toUpperCase();
-
-    if (a.includes("1") || a.includes("PRIMER")) {
-      return [
-        { codigo: "1_ACTA_EQUIPO", nombre: "Acta de Conformación del Equipo Comunitario" },
-        { codigo: "1_F1", nombre: "Ficha F-1: Elaboración y Validación de Instrumentos" },
-        { codigo: "1_F2", nombre: "Ficha F-2: Control de Asistencia PEC (Días detallados)" },
-        { codigo: "1_F3", nombre: "Ficha F-3: Aplicación de Técnicas e Instrumentos" },
-        { codigo: "1_F4", nombre: "Ficha F-4: Seguimiento del Docente Guía y Director" },
-        { codigo: "1_F5", nombre: "Ficha F-5: Valoración de la Producción de Conocimientos" },
-        { codigo: "CENTRALIZADOR", nombre: "Cuadro Centralizador de Evaluación 1er Año" },
-      ];
-    }
-
-    if (a.includes("2") || a.includes("SEGUNDO")) {
-      return [
-        { codigo: "2_ACTA_INICIO", nombre: "Acta de Inicio - 2do Año (IEPC-PEC)" },
-        { codigo: "2_ACTA_EQUIPO", nombre: "Acta de Conformación de Equipo Comunitario" },
-        { codigo: "2_F1", nombre: "Ficha F-1: Coordinación y Gestión Comunitaria" },
-        { codigo: "2_F2", nombre: "Ficha F-2: Asistencia PEC (2 semanas / 10 días)" },
-        { codigo: "2_F3", nombre: "Ficha F-3: Aplicación de Técnicas e Instrumentos" },
-        { codigo: "2_F4", nombre: "Ficha F-4: Apoyo y Seguimiento Concreción Curricular" },
-        { codigo: "2_F5", nombre: "Ficha F-5: Valoración del Docente Acompañante ESFM" },
-        { codigo: "2_F6", nombre: "Ficha F-6: Valoración de la Producción IEPC-PEC" },
-        { codigo: "CENTRALIZADOR", nombre: "Centralizador de Evaluación 2º Año" },
-      ];
-    }
-
-    if (a.includes("3") || a.includes("TERCER")) {
-      return [
-        { codigo: "3_ACTA_EQUIPO", nombre: "Acta de Conformación y Compromiso de Equipo" },
-        { codigo: "3_ACTA_INICIO", nombre: "Acta de Inicio - 3er Año" },
-        { codigo: "3_ACTA_SOCIALIZACION", nombre: "Acta de Socialización del Diagnóstico" },
-        { codigo: "3_A1", nombre: "Ficha A-1: Técnicas e Instrumentos de Investigación" },
-        { codigo: "3_B1", nombre: "Ficha B-1: Apoyo y Seguimiento Docente Acompañante" },
-        { codigo: "3_B2", nombre: "Ficha B-2: Asistencia PEC (4 semanas)" },
-        { codigo: "3_B3", nombre: "Ficha B-3: Apoyo Docente Guía Concreción Curricular" },
-        { codigo: "3_B4", nombre: "Ficha B-4: Seguimiento y Apoyo Docente Tutor" },
-        { codigo: "3_B5", nombre: "Ficha B-5: Presentación Informe Diagnóstico Socioparticipativo" },
-        { codigo: "CENTRALIZADOR", nombre: "Centralizador de Evaluación 3º Año" },
-      ];
-    }
-
-    if (a.includes("4") || a.includes("CUARTO")) {
-      return [
-        { codigo: "4_A1", nombre: "Ficha A-1: Técnicas e Instrumentos de Investigación" },
-        { codigo: "4_A2", nombre: "Ficha A-2: Elaboración de PDC (4 a 6 PDC)" },
-        { codigo: "4_B1", nombre: "Ficha B-1: Control de Asistencia PEC (6 semanas)" },
-        { codigo: "4_B2", nombre: "Ficha B-2: Concreción Curricular - Desarrollo del PDC" },
-        { codigo: "4_B3", nombre: "Ficha B-3: Valoración de la Clase Comunitaria" },
-        { codigo: "4_B4", nombre: "Ficha B-4: Centralizador Concreción Curricular" },
-        { codigo: "4_B5", nombre: "Ficha B-5: Seguimiento y Apoyo de la/el Docente Guía" },
-        { codigo: "4_B6", nombre: "Ficha B-6: Seguimiento y Apoyo Docente Tutor Acompañante" },
-        { codigo: "4_B7", nombre: "Ficha B-7: Diagnóstico Socioparticipativo de la UE/CEA/CEE" },
-        { codigo: "4_C1", nombre: "Ficha C-1: Evaluación Documento de Diseño Metodológico" },
-        { codigo: "4_C2", nombre: "Ficha C-2: Socialización del Diseño Metodológico" },
-        { codigo: "4_ACTA_FINAL", nombre: "Acta Final de Evaluación del Diseño Metodológico" },
-        { codigo: "4_ACTA_POSTERGACION", nombre: "Acta de Postergación de la Socialización Oral" },
-        { codigo: "CENTRALIZADOR", nombre: "Ficha Centralizadora de Evaluación 4to Año" },
-      ];
-    }
-
-    return [
-      { codigo: "5_A1", nombre: "Ficha A-1: Planificación y Elaboración de PDC" },
-      { codigo: "5_B1", nombre: "Ficha B-1: Control de Asistencia PEC (10 Semanas)" },
-      { codigo: "5_B2", nombre: "Ficha B-2: Concreción Curricular - Aplicación del PDC" },
-      { codigo: "5_B3", nombre: "Ficha B-3: Valoración de la Clase Comunitaria" },
-      { codigo: "5_B4", nombre: "Ficha B-4: Centralizador de Desarrollo de PDC" },
-      { codigo: "5_B5", nombre: "Ficha B-5: Centralizador Seguimiento y Apoyo del Docente Guía" },
-      { codigo: "5_B6", nombre: "Ficha B-6: Apoyo y Seguimiento Docente Tutor Acompañante" },
-      { codigo: "5_C1", nombre: "Ficha C-1: Evaluación del Documento de Trabajo de Grado" },
-      { codigo: "5_C2", nombre: "Ficha C-2: Socialización del Trabajo de Grado" },
-      { codigo: "5_ACTA_POSTERGACION", nombre: "Acta de Postergación de la Socialización de Trabajo de Grado" },
-      { codigo: "CENTRALIZADOR", nombre: "Ficha Centralizadora Cualitativa-Cuantitativa (5to Año)" },
-    ];
+    if (a.includes("1") || a.includes("PRIMER")) return FICHAS_1ER_ANO;
+    if (a.includes("2") || a.includes("SEGUNDO")) return FICHAS_2DO_ANO;
+    if (a.includes("3") || a.includes("TERCER")) return FICHAS_3ER_ANO;
+    if (a.includes("4") || a.includes("CUARTO")) return FICHAS_4TO_ANO;
+    return FICHAS_5TO_ANO;
   };
 
   const fetchActas = async () => {
@@ -140,29 +78,35 @@ export const ActaAnoView = ({ gestion, ano }) => {
     setShowPrintModal(true);
   };
 
-  // IMPRESIÓN DINÁMICA DE PLANTILLAS PDF MEDIANTE MODALES
+  // Delegación de impresión directa hacia el controlador del año
   const handleImprimirFichaEspecifica = async (ficha) => {
     if (!selectedActa) return;
 
-    if (ficha.codigo === "1_ACTA_EQUIPO") {
-      setGeneratingPdf(true);
-      const res = await imprimirActaConformacion1erAno(selectedActa.estudiante_id);
-      setGeneratingPdf(false);
+    setGeneratingPdf(true);
+    let res = { success: false, message: "" };
+    const a = (selectedActa.ano_formacion || ano || "").toString().toUpperCase();
+    const id = selectedActa.estudiante_id;
 
-      if (!res.success) {
-        setSystemModal({
-          show: true,
-          title: "Información del Sistema",
-          message: res.message,
-          type: "error"
-        });
-      }
+    if (a.includes("1") || a.includes("PRIMER")) {
+      res = await ejecutarImpresion1erAno(ficha.codigo, id);
+    } else if (a.includes("2") || a.includes("SEGUNDO")) {
+      res = await ejecutarImpresion2doAno(ficha.codigo, id);
+    } else if (a.includes("3") || a.includes("TERCER")) {
+      res = await ejecutarImpresion3erAno(ficha.codigo, id);
+    } else if (a.includes("4") || a.includes("CUARTO")) {
+      res = await ejecutarImpresion4toAno(ficha.codigo, id);
     } else {
+      res = await ejecutarImpresion5toAno(ficha.codigo, id);
+    }
+
+    setGeneratingPdf(false);
+
+    if (!res.success) {
       setSystemModal({
         show: true,
-        title: "Plantilla en Desarrollo",
-        message: `La plantilla oficial en PDF para "${ficha.nombre}" está siendo configurada en el servidor.`,
-        type: "info"
+        title: "Información del Sistema",
+        message: res.message,
+        type: res.message.includes("configurada") ? "info" : "error"
       });
     }
   };
@@ -261,7 +205,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
         </div>
       </div>
 
-      {/* MODAL 1: SELECCIÓN DE FICHAS Y IMPRESIÓN */}
+      {/* MODAL: SELECCIÓN DE FICHAS E IMPRESIÓN */}
       {showPrintModal && selectedActa && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -283,25 +227,25 @@ export const ActaAnoView = ({ gestion, ano }) => {
 
             <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200 mb-5">
               <div>
-                <span className="font-bold text-slate-400 block">Nombre:</span>
+                <span className="font-bold text-[#801B28] block">Nombre:</span>
                 <span className="font-extrabold text-slate-900 block">
                   {selectedActa.nombre} {selectedActa.apellido}
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">C.I.:</span>
+                <span className="font-bold text-[#801B28] block">C.I.:</span>
                 <span className="font-mono font-extrabold text-slate-900 block">
                   {selectedActa.ci}
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">Código:</span>
+                <span className="font-bold text-[#801B28] block">Código:</span>
                 <span className="font-mono font-extrabold text-[#801B28] block">
                   {selectedActa.codigo_estudiante}
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">Especialidad:</span>
+                <span className="font-bold text-[#801B28] block">Especialidad:</span>
                 <span className="font-bold text-slate-800 block">
                   {selectedActa.especialidad || "Educación Primaria"}
                 </span>
@@ -343,7 +287,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
         </div>
       )}
 
-      {/* MODAL 2: NOTIFICACIONES DEL SISTEMA (ALERTAS) */}
+      {/* MODAL: NOTIFICACIONES DEL SISTEMA */}
       {systemModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 text-center space-y-4">

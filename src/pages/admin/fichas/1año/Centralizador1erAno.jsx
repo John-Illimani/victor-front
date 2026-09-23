@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from './ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { GraduationCap, MapPin, Award, Save, Loader2, X } from 'lucide-react';
-import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, convertirNumeroALiteral } from '../../../../utils/camposFichas';
+import { GraduationCap, MapPin, Award, Save, Loader2, Trash, X } from 'lucide-react';
+import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, ESPECIALIDADES_ESFM, convertirNumeroALiteral } from '../../../../utils/camposFichas';
 import { centralizador1erAnoService } from '../../../../services/fichas/1año/centralizador1erAnoService';
+import { especialidadService } from '../../../../services/especialidadService';
 
 export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, estudianteSeleccionado }) => {
   const codigoFicha = "CENTRALIZADOR";
@@ -19,10 +20,12 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
+  const [listaEspecialidades, setListaEspecialidades] = useState(ESPECIALIDADES_ESFM);
   const [modalNotif, setModalNotif] = useState({ isOpen: false, titulo: '', mensaje: '', tipo: 'info' });
+  const [modalConfirmDelete, setModalConfirmDelete] = useState(false);
 
-  // Función directa para formatear cualquier valor verificando si es entero o decimal
   const formatInputValue = (val) => {
     if (val === null || val === undefined || val === '') return '0';
     const num = parseFloat(val);
@@ -33,7 +36,7 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
   const initialFormState = {
     apellidos_nombres: '',
     esfm_ua: 'ESFM Simón Bolívar / UA El Alto',
-    ano_formacion: '1er Año de Formación',
+    especialidad: ESPECIALIDADES_ESFM[0],
     lugar_ciudad: 'El Alto',
     departamento: DEPARTAMENTOS_BOLIVIA[0],
     dia: String(new Date().getDate()),
@@ -53,7 +56,33 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
     ...fichaData
   });
 
-  // Carga de centralizador desde la API
+  useEffect(() => {
+    const fetchEspecialidades = async () => {
+      try {
+        const data = await especialidadService.getEspecialidades();
+        if (Array.isArray(data) && data.length > 0) {
+          const nombres = data.map(item => typeof item === 'string' ? item : item.nombre).filter(Boolean);
+          if (nombres.length > 0) setListaEspecialidades(nombres);
+        }
+      } catch (error) {
+        console.warn("Usando especialidades por defecto.");
+      }
+    };
+
+    if (isOpen) fetchEspecialidades();
+  }, [isOpen]);
+
+  const calcularPromedioAutomatico = (stateObj) => {
+    const keys = ['nota_f1', 'nota_f2', 'nota_f3', 'nota_f4', 'nota_f5'];
+    const notas = keys.map(k => parseFloat(stateObj[k])).filter(n => !isNaN(n));
+    const prom = notas.length > 0 ? parseFloat((notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(2)) : 0;
+    
+    return {
+      promedio_numeral: formatInputValue(prom),
+      promedio_literal: convertirNumeroALiteral(prom)
+    };
+  };
+
   useEffect(() => {
     const fetchCentralizador = async () => {
       if (isOpen && estudianteSeleccionado?.id) {
@@ -61,38 +90,39 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
         try {
           const res = await centralizador1erAnoService.getByEstudiante(estudianteSeleccionado.id);
           const nombreCompleto = `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim();
-          const anoForm = estudianteSeleccionado.ano_formacion || estudianteSeleccionado.anoFormacion || '1er Año de Formación';
+          const espEstudiante = estudianteSeleccionado.especialidad || listaEspecialidades[0] || ESPECIALIDADES_ESFM[0];
 
           if (res.existe && res.datos) {
             const d = res.datos;
-            const prom = parseFloat(d.promedio_numeral || 0);
-
-            setFormData(prev => ({
-              ...prev,
+            const updatedState = {
+              ...initialFormState,
               ...d,
               apellidos_nombres: nombreCompleto,
-              esfm_ua: estudianteSeleccionado.esfm_ua || d.esfm_ua || 'ESFM Simón Bolívar / UA El Alto',
-              ano_formacion: anoForm,
+              esfm_ua: d.esfm_ua || 'ESFM Simón Bolívar / UA El Alto',
+              especialidad: d.especialidad || espEstudiante,
               nota_f1: formatInputValue(d.nota_f1),
               nota_f2: formatInputValue(d.nota_f2),
               nota_f3: formatInputValue(d.nota_f3),
               nota_f4: formatInputValue(d.nota_f4),
               nota_f5: formatInputValue(d.nota_f5),
-              promedio_numeral: formatInputValue(prom),
-              promedio_literal: d.promedio_literal || convertirNumeroALiteral(prom),
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
               departamento: d.departamento || DEPARTAMENTOS_BOLIVIA[0],
               dia: d.dia || String(new Date().getDate()),
               mes: d.mes || MESES_ANIO[new Date().getMonth()],
               ano: String(d.ano || '2026').slice(0, 4)
-            }));
-            if (setFichaData) setFichaData(d);
+            };
+
+            const calcProm = calcularPromedioAutomatico(updatedState);
+            updatedState.promedio_numeral = calcProm.promedio_numeral;
+            updatedState.promedio_literal = calcProm.promedio_literal;
+
+            setFormData(updatedState);
+            if (setFichaData) setFichaData(updatedState);
           } else {
             const defaultState = {
               ...initialFormState,
               apellidos_nombres: nombreCompleto,
-              esfm_ua: estudianteSeleccionado.esfm_ua || initialFormState.esfm_ua,
-              ano_formacion: anoForm
+              especialidad: espEstudiante
             };
             setFormData(prev => ({ ...prev, ...defaultState }));
           }
@@ -112,7 +142,7 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
       setFormData(prev => ({
         ...prev,
         apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-        ano_formacion: estudianteSeleccionado.ano_formacion || estudianteSeleccionado.anoFormacion || prev.ano_formacion,
+        especialidad: estudianteSeleccionado.especialidad || prev.especialidad,
         ...fichaData
       }));
     }
@@ -124,12 +154,18 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
 
   const handleCampoChange = (key, value) => {
     const updated = { ...formData, [key]: value };
+
+    if (key.startsWith('nota_')) {
+      const calcProm = calcularPromedioAutomatico(updated);
+      updated.promedio_numeral = calcProm.promedio_numeral;
+      updated.promedio_literal = calcProm.promedio_literal;
+    }
+
     setFormData(updated);
     if (setFichaData) setFichaData(updated);
   };
 
-  // Guardar exclusivamente Lugar y Fecha de Centralización
-  const handleSaveFecha = async () => {
+  const handleSave = async () => {
     if (!estudianteSeleccionado?.id) {
       mostrarNotificacion("Estudiante No Seleccionado", "Debe seleccionar un estudiante antes de guardar.", "error");
       return;
@@ -138,11 +174,36 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
     setSaving(true);
     try {
       const res = await centralizador1erAnoService.updateFecha(estudianteSeleccionado.id, formData);
-      mostrarNotificacion("¡Fecha Actualizada!", res.message || "La fecha de centralización se guardó correctamente.", "success");
+      mostrarNotificacion("¡Guardado Exitoso!", res.message || "El centralizador de calificaciones se guardó correctamente.", "success");
     } catch (error) {
-      mostrarNotificacion("Error al Guardar", error.message || "No se pudo guardar la fecha.", "error");
+      mostrarNotificacion("Error al Guardar", error.message || "No se pudieron guardar los datos.", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const ejecutarEliminacion = async () => {
+    if (!estudianteSeleccionado?.id) return;
+
+    setDeleting(true);
+    try {
+      const res = await centralizador1erAnoService.deleteCentralizador(estudianteSeleccionado.id);
+      const nombreCompleto = `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim();
+      const clearedData = {
+        ...initialFormState,
+        apellidos_nombres: nombreCompleto,
+        especialidad: estudianteSeleccionado.especialidad || listaEspecialidades[0] || ESPECIALIDADES_ESFM[0]
+      };
+
+      setFormData(clearedData);
+      if (setFichaData) setFichaData(clearedData);
+      setModalConfirmDelete(false);
+      mostrarNotificacion("Registro Eliminado", res.message || "El centralizador fue eliminado con éxito.", "success");
+    } catch (error) {
+      setModalConfirmDelete(false);
+      mostrarNotificacion("Error al Eliminar", error.message || "No se pudo eliminar el registro.", "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -151,7 +212,7 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
       <button
         type="button"
         onClick={onClose}
-        disabled={saving}
+        disabled={saving || deleting}
         className="px-4 py-2 bg-slate-200 text-slate-700 font-extrabold rounded-xl hover:bg-slate-300 transition-colors text-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
       >
         <X size={14} /> Cerrar Ventana
@@ -159,12 +220,12 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
 
       <button
         type="button"
-        onClick={handleSaveFecha}
-        disabled={saving}
+        onClick={handleSave}
+        disabled={saving || deleting}
         className="px-5 py-2 bg-[#801B28] text-white font-bold rounded-xl text-xs flex items-center gap-1.5 hover:bg-rose-900 transition-all shadow-md cursor-pointer disabled:opacity-50"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-        {saving ? "Guardando..." : "Guardar Fecha de Centralización"}
+        {saving ? "Guardando..." : "Guardar Centralizador"}
       </button>
     </div>
   );
@@ -181,13 +242,20 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
           ) : (
             <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-4">
               
-              <div className="border-b border-slate-200 pb-2 text-center">
-                <h4 className="font-extrabold text-[#801B28] uppercase text-sm flex justify-center items-center gap-2">
+              <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-200 pb-2">
+                <h4 className="font-extrabold text-[#801B28] uppercase text-sm flex items-center gap-2">
                   <Award size={18} /> {config?.titulo || "CENTRALIZADOR DE CALIFICACIONES"}
                 </h4>
-                <p className="text-[11px] font-semibold text-slate-600 mt-1">
-                  Responsable de llenado: {config?.docenteRol || "Docente Acompañante"}
-                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setModalConfirmDelete(true)}
+                  disabled={deleting || saving}
+                  className="px-3 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 font-bold rounded-xl text-xs flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
+                  {deleting ? "Eliminando..." : "Eliminar"}
+                </button>
               </div>
 
               {/* DATOS REFERENCIALES DEL ESTUDIANTE */}
@@ -197,21 +265,39 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 text-[10px] mb-1">Nombres y Apellidos:</label>
-                    <input type="text" readOnly value={formData.apellidos_nombres} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-extrabold text-slate-900 outline-none" />
+                    <label className="block font-bold text-slate-700 text-[10px] mb-1">Apellidos y nombres:</label>
+                    <input
+                      type="text"
+                      value={formData.apellidos_nombres}
+                      onChange={(e) => handleCampoChange('apellidos_nombres', e.target.value)}
+                      className="w-full border border-amber-200 p-2 rounded-xl bg-white font-extrabold text-slate-900 outline-none focus:border-[#801B28]"
+                    />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">ESFM/UA:</label>
-                    <input type="text" readOnly value={formData.esfm_ua} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none" />
+                    <input
+                      type="text"
+                      value={formData.esfm_ua}
+                      onChange={(e) => handleCampoChange('esfm_ua', e.target.value)}
+                      className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none focus:border-[#801B28]"
+                    />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 text-[10px] mb-1">Año de Formación:</label>
-                    <input type="text" readOnly value={formData.ano_formacion} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none" />
+                    <label className="block font-bold text-slate-700 text-[10px] mb-1">Especialidad:</label>
+                    <select
+                      value={formData.especialidad}
+                      onChange={(e) => handleCampoChange('especialidad', e.target.value)}
+                      className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none focus:border-[#801B28]"
+                    >
+                      {listaEspecialidades.map((e, idx) => (
+                        <option key={idx} value={e}>{e}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
 
-              {/* TABLA DEL CENTRALIZADOR (SOLO LECTURA DE NOTAS) */}
+              {/* TABLA DEL CENTRALIZADOR */}
               <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
@@ -230,10 +316,16 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
                         </td>
                         <td className="p-2.5 leading-snug">{c.label}</td>
                         <td className="p-2.5 text-center font-bold font-mono text-slate-700 border-x border-slate-200">{c.ficha}</td>
-                        <td className="p-2 text-center">
-                          <span className="inline-block w-full py-1.5 px-2 bg-slate-100 rounded-lg font-mono font-black text-slate-900 text-sm border border-slate-200">
-                            {formatInputValue(formData[c.key]) || '0'} PTS
-                          </span>
+                        <td className="p-1.5 text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={formData[c.key] ?? ''}
+                            onChange={(e) => handleCampoChange(c.key, e.target.value)}
+                            className="w-full border border-slate-300 p-1.5 rounded-lg font-mono font-bold text-center text-slate-900 bg-white focus:border-[#801B28] outline-none"
+                          />
                         </td>
                       </tr>
                     ))}
@@ -246,7 +338,7 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
                 <div>
                   <label className="block font-extrabold text-slate-500 uppercase text-[10px]">PROMEDIO TOTAL CONSOLIDADO:</label>
                   <div className="font-mono font-black text-2xl text-[#801B28] mt-1">
-                    {formatInputValue(formData.promedio_numeral) || '0'} / 100 PTS
+                    {formatInputValue(formData.promedio_numeral)} / 100 PTS
                   </div>
                 </div>
                 <div>
@@ -257,7 +349,7 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
                 </div>
               </div>
 
-              {/* LUGAR Y FECHA DE EMISIÓN (EDITABLES) */}
+              {/* LUGAR Y FECHA DE EMISIÓN */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <span className="font-extrabold text-[#801B28] uppercase text-[11px] flex items-center gap-1.5">
                   <MapPin size={14} /> LUGAR Y FECHA DE EMISIÓN DE LA CENTRALIZACIÓN
@@ -295,13 +387,24 @@ export const Centralizador1erAno = ({ isOpen, onClose, fichaData, setFichaData, 
         </div>
       </ModalBase>
 
-      {/* MODAL NOTIFICACIÓN */}
+      {/* NOTIFICACIÓN */}
       <ConfirmModal
         isOpen={modalNotif.isOpen}
         onClose={() => setModalNotif({ ...modalNotif, isOpen: false })}
         titulo={modalNotif.titulo}
         mensaje={modalNotif.mensaje}
         tipo={modalNotif.tipo}
+      />
+
+      {/* CONFIRMAR ELIMINACIÓN */}
+      <ConfirmModal
+        isOpen={modalConfirmDelete}
+        onClose={() => setModalConfirmDelete(false)}
+        onConfirm={ejecutarEliminacion}
+        titulo="¿Eliminar Centralizador de Calificaciones?"
+        mensaje="Esta acción borrará de forma permanente el registro guardado de este centralizador."
+        tipo="danger"
+        cargando={deleting}
       />
     </>
   );

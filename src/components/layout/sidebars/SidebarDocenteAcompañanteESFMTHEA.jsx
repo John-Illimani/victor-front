@@ -32,11 +32,11 @@ const MENU_ITEMS_DOCENTE_ACOMPANANTE = [
       { name: "Centralizadores", link: "/docente-acompanante/iepc-pec/centralizadores" }
     ]
   },
-  { 
-    name: "Seguimiento", 
-    link: "/docente-acompanante/seguimiento", 
-    icon: TrendingUp 
-  },
+  // { 
+  //   name: "Seguimiento", 
+  //   link: "/docente-acompanante/seguimiento", 
+  //   icon: TrendingUp 
+  // },
   { 
     name: "Verificar integridad", 
     link: "/docente-acompanante/verificar-integridad", 

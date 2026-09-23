@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from '../1año/ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { GraduationCap, MapPin, UserCheck, Save, Loader2, Trash, X } from 'lucide-react';
+import { GraduationCap, MapPin, Save, Loader2, Trash, X } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, convertirNumeroALiteral } from '../../../../utils/camposFichas';
 import { fichaB43erAnoService } from '../../../../services/fichas/3año/fichaB43erAnoService';
 
-// Helper para formatear promedios y notas (enteros sin decimales, decimales tal cual)
 const formatInputValue = (val) => {
   if (val === null || val === undefined || val === '') return '';
   const num = parseFloat(val);
@@ -13,34 +12,47 @@ const formatInputValue = (val) => {
   return num % 1 === 0 ? String(Math.round(num)) : String(num);
 };
 
-export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, listaDocentes = [], estudianteSeleccionado }) => {
+export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, estudianteSeleccionado }) => {
   const codigoFicha = "3_B4";
   const config = CONFIGURACION_FICHAS[codigoFicha];
 
-  const criteriosSer = [
-    { key: 'ser_1', label: 'Responsabilidad, compromiso y puntualidad en el desarrollo de la práctica educativa.' },
-    { key: 'ser_2', label: 'Respeto en el trato con estudiantes, padres/madres de familia, maestras, maestros y personal de la UE/CEA/CEE.' },
-    { key: 'ser_3', label: 'Promueve la práctica de valores sociocomunitarios en la UE/CEA/CEE.' }
+  const dimensionesConfig = [
+    {
+      key: 'ser',
+      titulo: '1. DIMENSIÓN: SER',
+      criterios: [
+        'Responsabilidad, compromiso y puntualidad en el desarrollo de la práctica educativa.',
+        'Respeto en el trato con estudiantes, padres/madres de familia, maestras, maestros y personal de la UE/CEA/CEE.',
+        'Promueve la práctica de valores sociocomunitarios en la UE/CEA/CEE.'
+      ]
+    },
+    {
+      key: 'saber',
+      titulo: '2. DIMENSIÓN: SABER',
+      criterios: [
+        'Conocimiento y manejo de elementos curriculares de la planificación.',
+        'Conocimiento y dominio de elementos propios de su especialidad.',
+        'Promueve el fortalecimiento del pensamiento crítico y reflexivo con las y los estudiantes.',
+        'Dominio de aula usando estrategias pertinentes.'
+      ]
+    },
+    {
+      key: 'hacer',
+      titulo: '3. DIMENSIÓN: HACER',
+      criterios: [
+        'Manifiesta creatividad en el uso de recursos materiales y educativos.',
+        'Utiliza instrumentos de evaluación durante la concreción curricular.'
+      ]
+    },
+    {
+      key: 'decidir',
+      titulo: '4. DIMENSIÓN: DECIDIR',
+      criterios: [
+        'Asume las sugerencias y observaciones a los PDC elaborados.',
+        'Aplica acciones de manera oportuna para la mejora de la PEC.'
+      ]
+    }
   ];
-
-  const criteriosSaber = [
-    { key: 'saber_1', label: 'Conocimiento y manejo de elementos curriculares de la planificación.' },
-    { key: 'saber_2', label: 'Conocimiento y dominio de elementos propios de su especialidad.' },
-    { key: 'saber_3', label: 'Promueve el fortalecimiento del pensamiento crítico y reflexivo con las y los estudiantes.' },
-    { key: 'saber_4', label: 'Dominio de aula usando estrategias pertinentes.' }
-  ];
-
-  const criteriosHacer = [
-    { key: 'hacer_1', label: 'Manifiesta creatividad en el uso de recursos materiales y educativos.' },
-    { key: 'hacer_2', label: 'Utiliza instrumentos de evaluación durante la concreción curricular.' }
-  ];
-
-  const criteriosDecidir = [
-    { key: 'decidir_1', label: 'Asume las sugerencias y observaciones a los PDC elaborados.' },
-    { key: 'decidir_2', label: 'Aplica acciones de manera oportuna para la mejora de la PEC.' }
-  ];
-
-  const todosCriterios = [...criteriosSer, ...criteriosSaber, ...criteriosHacer, ...criteriosDecidir];
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,12 +68,12 @@ export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     dia: String(new Date().getDate()),
     mes: MESES_ANIO[new Date().getMonth()],
     ano: '2026',
-    ser_1: '', ser_2: '', ser_3: '',
-    saber_1: '', saber_2: '', saber_3: '', saber_4: '',
-    hacer_1: '', hacer_2: '',
-    decidir_1: '', decidir_2: '',
+    ser: '',
+    saber: '',
+    hacer: '',
+    decidir: '',
     promedio_numeral: 0,
-    promedio_literal: 'CERO CON 00/100',
+    promedio_literal: 'CERO',
     observaciones: '',
     docente_guia_id: ''
   };
@@ -88,17 +100,10 @@ export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
               ...prev,
               ...d,
               apellidos_nombres: nombreCompleto,
-              ser_1: formatInputValue(d.ser_1),
-              ser_2: formatInputValue(d.ser_2),
-              ser_3: formatInputValue(d.ser_3),
-              saber_1: formatInputValue(d.saber_1),
-              saber_2: formatInputValue(d.saber_2),
-              saber_3: formatInputValue(d.saber_3),
-              saber_4: formatInputValue(d.saber_4),
-              hacer_1: formatInputValue(d.hacer_1),
-              hacer_2: formatInputValue(d.hacer_2),
-              decidir_1: formatInputValue(d.decidir_1),
-              decidir_2: formatInputValue(d.decidir_2),
+              ser: formatInputValue(d.ser),
+              saber: formatInputValue(d.saber),
+              hacer: formatInputValue(d.hacer),
+              decidir: formatInputValue(d.decidir),
               promedio_numeral: prom,
               promedio_literal: d.promedio_literal || convertirNumeroALiteral(prom),
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
@@ -126,16 +131,6 @@ export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     fetchFicha();
   }, [isOpen, estudianteSeleccionado]);
 
-  useEffect(() => {
-    if (estudianteSeleccionado) {
-      setFormData(prev => ({
-        ...prev,
-        apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-        ...fichaData
-      }));
-    }
-  }, [estudianteSeleccionado, fichaData]);
-
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
   };
@@ -154,7 +149,11 @@ export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     }
 
     const newForm = { ...formData, [key]: valorGuardar };
-    const notas = todosCriterios.map(c => parseFloat(newForm[c.key])).filter(n => !isNaN(n));
+    
+    // Calcular promedio general entre los 4 campos (SER, SABER, HACER, DECIDIR)
+    const campos = ['ser', 'saber', 'hacer', 'decidir'];
+    const notas = campos.map(c => parseFloat(newForm[c])).filter(n => !isNaN(n));
+    
     let prom = notas.length > 0 ? parseFloat((notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(2)) : 0;
     if (prom % 1 === 0) prom = Math.round(prom);
 
@@ -272,91 +271,39 @@ export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
                 <input type="text" readOnly value={formData.apellidos_nombres} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-extrabold text-slate-900 outline-none" />
               </div>
 
-              {/* EVALUACIÓN SEPARADA POR SUBTÍTULOS DE DIMENSIONES */}
+              {/* EVALUACIÓN POR DIMENSIONES (4 CAMPOS ÚNICOS) */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-4">
                 <span className="font-extrabold text-slate-800 uppercase text-[11px] block border-b pb-2">
-                  EVALUACIÓN POR DIMENSIONES FORMATIVAS
+                  EVALUACIÓN DE DIMENSIONES FORMATIVAS
                 </span>
 
-                {/* DIMENSIÓN: SER */}
-                <div className="space-y-2">
-                  <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
-                    1. DIMENSIÓN: SER
-                  </span>
-                  {criteriosSer.map(crit => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800">{crit.label}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
-                    </div>
-                  ))}
-                </div>
+                {dimensionesConfig.map(dim => (
+                  <div key={dim.key} className="space-y-2">
+                    <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
+                      {dim.titulo}
+                    </span>
+                    
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3">
+                      <ul className="list-disc list-inside space-y-1 text-slate-700 font-medium pl-1 text-[11px]">
+                        {dim.criterios.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
 
-                {/* DIMENSIÓN: SABER */}
-                <div className="space-y-2 pt-2">
-                  <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
-                    2. DIMENSIÓN: SABER
-                  </span>
-                  {criteriosSaber.map(crit => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800">{crit.label}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200">
+                        <span className="font-extrabold text-slate-800 text-xs">Puntaje Dimensión (1 a 100):</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="1-100"
+                          value={formatInputValue(formData[dim.key])}
+                          onChange={(e) => handleNotaChange(dim.key, e.target.value)}
+                          className="w-28 border p-2 rounded-lg bg-white font-mono font-bold text-center text-slate-900 text-sm focus:border-[#801B28] outline-none"
+                        />
+                      </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* DIMENSIÓN: HACER */}
-                <div className="space-y-2 pt-2">
-                  <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
-                    3. DIMENSIÓN: HACER
-                  </span>
-                  {criteriosHacer.map(crit => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800">{crit.label}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                {/* DIMENSIÓN: DECIDIR */}
-                <div className="space-y-2 pt-2">
-                  <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
-                    4. DIMENSIÓN: DECIDIR
-                  </span>
-                  {criteriosDecidir.map(crit => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800">{crit.label}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
-                    </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
 
                 <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
@@ -367,7 +314,7 @@ export const FichaB4_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
                   </div>
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Literal:</label>
-                    <div className="font-extrabold text-xs text-slate-900 uppercase mt-2">{formData.promedio_literal || 'CERO CON 00/100'}</div>
+                    <div className="font-extrabold text-xs text-slate-900 uppercase mt-2">{formData.promedio_literal || 'CERO'}</div>
                   </div>
                 </div>
 

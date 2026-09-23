@@ -11,16 +11,16 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
   const config = CONFIGURACION_FICHAS[codigoFicha];
 
   const criterios = [
-    { key: 'c1', label: 'Descripción del contexto educativo y características de la UE/CEA/CEE' },
-    { key: 'c2', label: 'Análisis de la información (Aspectos sociales, económicos, culturales, etc.)' },
-    { key: 'c3', label: 'Formulación adecuada del nudo problemático.' },
-    { key: 'c4', label: 'Preguntas problematizadoras, pertinentes al nudo.' },
-    { key: 'c5', label: 'Metodología del proceso IEPC-PEC.' },
-    { key: 'c6', label: 'Marco reflexivo teórico.' },
-    { key: 'c7', label: 'Alternativa de solución planteada' },
-    { key: 'c8', label: 'Conclusiones y recomendaciones' },
-    { key: 'c9', label: 'Claridad y coherencia en la redacción.' },
-    { key: 'c10', label: 'Uso de normas APA (6ta y/o 7ma edición).' }
+    { key: 'c1', obsKey: 'obs_c1', label: 'Descripción del contexto educativo y características de la UE/CEA/CEE' },
+    { key: 'c2', obsKey: 'obs_c2', label: 'Análisis de la información (Aspectos sociales, económicos, culturales, etc.)' },
+    { key: 'c3', obsKey: 'obs_c3', label: 'Formulación adecuada del nudo problemático.' },
+    { key: 'c4', obsKey: 'obs_c4', label: 'Preguntas problematizadoras, pertinentes al nudo.' },
+    { key: 'c5', obsKey: 'obs_c5', label: 'Metodología del proceso IEPC-PEC.' },
+    { key: 'c6', obsKey: 'obs_c6', label: 'Marco reflexivo teórico.' },
+    { key: 'c7', obsKey: 'obs_c7', label: 'Alternativa de solución planteada' },
+    { key: 'c8', obsKey: 'obs_c8', label: 'Conclusiones y recomendaciones' },
+    { key: 'c9', obsKey: 'obs_c9', label: 'Claridad y coherencia en la redacción.' },
+    { key: 'c10', obsKey: 'obs_c10', label: 'Uso de normas APA (6ta y/o 7ma edición).' }
   ];
 
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,6 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
   const [modalNotif, setModalNotif] = useState({ isOpen: false, titulo: '', mensaje: '', tipo: 'info' });
   const [modalConfirmDelete, setModalConfirmDelete] = useState(false);
 
-  // Función para determinar si el valor es entero o decimal antes de asignarlo al value del input
   const formatInputValue = (val) => {
     if (val === null || val === undefined || val === '') return '';
     const num = Number(val);
@@ -45,8 +44,10 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     especialidad: ESPECIALIDADES_ESFM[0],
     c1: '', c2: '', c3: '', c4: '', c5: '',
     c6: '', c7: '', c8: '', c9: '', c10: '',
+    obs_c1: '', obs_c2: '', obs_c3: '', obs_c4: '', obs_c5: '',
+    obs_c6: '', obs_c7: '', obs_c8: '', obs_c9: '', obs_c10: '',
     puntaje_final: 0,
-    promedio_literal: 'CERO CON 00/100',
+    promedio_literal: 'CERO',
     observaciones: '',
     docente_acompanante_id: '',
     docente_investigacion_id: '',
@@ -101,6 +102,11 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
               c5: formatInputValue(d.c5), c6: formatInputValue(d.c6),
               c7: formatInputValue(d.c7), c8: formatInputValue(d.c8),
               c9: formatInputValue(d.c9), c10: formatInputValue(d.c10),
+              obs_c1: d.obs_c1 || '', obs_c2: d.obs_c2 || '',
+              obs_c3: d.obs_c3 || '', obs_c4: d.obs_c4 || '',
+              obs_c5: d.obs_c5 || '', obs_c6: d.obs_c6 || '',
+              obs_c7: d.obs_c7 || '', obs_c8: d.obs_c8 || '',
+              obs_c9: d.obs_c9 || '', obs_c10: d.obs_c10 || '',
               puntaje_final: pf,
               promedio_literal: d.promedio_literal || convertirNumeroALiteral(pf),
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
@@ -129,17 +135,6 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     fetchFicha();
   }, [isOpen, estudianteSeleccionado]);
 
-  useEffect(() => {
-    if (estudianteSeleccionado) {
-      setFormData(prev => ({
-        ...prev,
-        apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-        especialidad: estudianteSeleccionado.especialidad || prev.especialidad,
-        ...fichaData
-      }));
-    }
-  }, [estudianteSeleccionado, fichaData]);
-
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
   };
@@ -162,7 +157,8 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
 
   const actualizarPromedios = (newForm) => {
     const notas = criterios.map(c => parseFloat(newForm[c.key])).filter(n => !isNaN(n));
-    const prom = notas.length > 0 ? parseFloat((notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(2)) : 0;
+    let prom = notas.length > 0 ? parseFloat((notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(2)) : 0;
+    if (prom % 1 === 0) prom = Math.round(prom);
 
     newForm.puntaje_final = prom;
     newForm.promedio_numeral = prom;
@@ -295,28 +291,41 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
                 </div>
               </div>
 
-              {/* MATRIZ DE CRITERIOS DE EVALUACIÓN */}
+              {/* MATRIZ DE CRITERIOS CON VALORACIÓN CUALITATIVA (OBSERVACIÓN) Y NOTA */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <span className="font-extrabold text-slate-800 uppercase text-[11px] block border-b pb-2">
-                  VALORACIÓN Y PUNTAJE DE INFORME DIAGNÓSTICO
+                  VALORACIÓN CUALITATIVA Y PUNTAJE DE INFORME DIAGNÓSTICO
                 </span>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {criterios.map((crit, idx) => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800 text-[11px]">
+                    <div key={crit.key} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+                      <span className="font-bold text-slate-800 text-[11px] block">
                         <strong className="text-[#801B28] mr-1">{idx + 1}.</strong> {crit.label}
                       </span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        step="any"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder="Valoración cualitativa (observación)..."
+                          value={formData[crit.obsKey] || ''}
+                          onChange={(e) => handleCampoChange(crit.obsKey, e.target.value)}
+                          className="sm:col-span-3 border p-2 rounded-xl bg-white font-medium text-slate-800 text-xs focus:border-[#801B28] outline-none"
+                        />
+                        
+                        <div className="flex items-center gap-1 justify-end">
+                          <span className="text-[10px] font-bold text-slate-500">Puntaje:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            placeholder="1-100"
+                            value={formatInputValue(formData[crit.key])}
+                            onChange={(e) => handleNotaChange(crit.key, e.target.value)}
+                            className="w-24 border p-2 rounded-xl bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none text-xs"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -324,22 +333,22 @@ export const FichaB5_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
                 <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Puntaje Final Promedio:</label>
-                    <div className="font-mono font-black text-2xl text-[#801B28]">{formData.puntaje_final || '0.00'} / 100 PTS</div>
+                    <div className="font-mono font-black text-2xl text-[#801B28]">{formData.puntaje_final || '0'} / 100 PTS</div>
                   </div>
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Promedio Literal:</label>
-                    <div className="font-extrabold text-xs text-slate-900 uppercase mt-2">{formData.promedio_literal || 'CERO CON 00/100'}</div>
+                    <div className="font-extrabold text-xs text-slate-900 uppercase mt-2">{formData.promedio_literal || 'CERO'}</div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 text-[10px] mb-1">Observaciones y/o Sugerencias:</label>
+                  <label className="block font-bold text-slate-700 text-[10px] mb-1">Observaciones y/o Sugerencias Generales:</label>
                   <textarea
                     rows="3"
                     value={formData.observaciones}
                     onChange={(e) => handleCampoChange('observaciones', e.target.value)}
                     className="w-full border p-2.5 rounded-xl font-medium text-slate-800 text-xs focus:border-[#801B28] outline-none"
-                    placeholder="Escriba observaciones o sugerencias..."
+                    placeholder="Escriba observaciones generales..."
                   />
                 </div>
               </div>

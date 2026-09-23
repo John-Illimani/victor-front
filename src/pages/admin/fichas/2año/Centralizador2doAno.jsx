@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from '../1año/ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { GraduationCap, MapPin, Award, Save, Loader2, X } from 'lucide-react';
+import { GraduationCap, MapPin, Award, Save, Loader2, Trash, X } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, convertirNumeroALiteral } from '../../../../utils/camposFichas';
 import { centralizador2doAnoService } from '../../../../services/fichas/2año/centralizador2doAnoService';
 
@@ -20,7 +20,19 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const [modalNotif, setModalNotif] = useState({ isOpen: false, titulo: '', mensaje: '', tipo: 'info' });
+  const [modalConfirmDelete, setModalConfirmDelete] = useState(false);
+
+  // Extraer el nombre por defecto si no viene de la BD
+  const construirNombreEstudiante = (est) => {
+    if (!est) return '';
+    const nombres = est.nombre || est.nombres || '';
+    const apellidos = est.apellido || est.apellidos || '';
+    const completo = `${nombres} ${apellidos}`.trim();
+    return completo || est.apellidos_nombres || '';
+  };
 
   const formatInputValue = (val) => {
     if (val === null || val === undefined || val === '') return '0';
@@ -31,7 +43,7 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
 
   const initialFormState = {
     apellidos_nombres: '',
-    esfm_ua: 'ESFM Simón Bolívar / UA El Alto',
+    esfm_ua: 'ESFM/UA - El Alto',
     ano_formacion: '2do Año de Formación',
     observaciones: '',
     lugar_ciudad: 'El Alto',
@@ -58,9 +70,9 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
     const fetchCentralizador = async () => {
       if (isOpen && estudianteSeleccionado?.id) {
         setLoading(true);
+        const nombreDefecto = construirNombreEstudiante(estudianteSeleccionado);
         try {
           const res = await centralizador2doAnoService.getByEstudiante(estudianteSeleccionado.id);
-          const nombreCompleto = `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim();
 
           if (res.existe && res.datos) {
             const d = res.datos;
@@ -69,9 +81,9 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
             setFormData(prev => ({
               ...prev,
               ...d,
-              apellidos_nombres: nombreCompleto,
-              esfm_ua: estudianteSeleccionado.esfm_ua || d.esfm_ua || 'ESFM Simón Bolívar / UA El Alto',
-              ano_formacion: '2do Año de Formación',
+              apellidos_nombres: d.apellidos_nombres || nombreDefecto,
+              esfm_ua: d.esfm_ua || estudianteSeleccionado.esfm_ua || 'ESFM/UA - El Alto',
+              ano_formacion: d.ano_formacion || '2do Año de Formación',
               nota_f1: formatInputValue(d.nota_f1),
               nota_f2: formatInputValue(d.nota_f2),
               nota_f3: formatInputValue(d.nota_f3),
@@ -91,7 +103,8 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
           } else {
             const defaultState = {
               ...initialFormState,
-              apellidos_nombres: nombreCompleto
+              apellidos_nombres: nombreDefecto,
+              esfm_ua: estudianteSeleccionado.esfm_ua || 'ESFM/UA - El Alto'
             };
             setFormData(prev => ({ ...prev, ...defaultState }));
           }
@@ -106,22 +119,12 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
     fetchCentralizador();
   }, [isOpen, estudianteSeleccionado]);
 
-  useEffect(() => {
-    if (estudianteSeleccionado) {
-      setFormData(prev => ({
-        ...prev,
-        apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-        ...fichaData
-      }));
-    }
-  }, [estudianteSeleccionado, fichaData]);
-
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
   };
 
   const handleCampoChange = (key, value) => {
-    const updated = { ...formData, [key]: value };
+    const updated = { ...formData, [key]: value ?? '' };
     setFormData(updated);
     if (setFichaData) setFichaData(updated);
   };
@@ -135,11 +138,40 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
     setSaving(true);
     try {
       const res = await centralizador2doAnoService.saveDetalles(estudianteSeleccionado.id, formData);
-      mostrarNotificacion("¡Guardado Exitoso!", res.message || "Observaciones y fecha guardadas correctamente.", "success");
+      mostrarNotificacion("¡Guardado Exitoso!", res.message || "El centralizador de calificaciones se guardó correctamente.", "success");
+      if (res.datos) {
+        setFormData(prev => ({ ...prev, ...res.datos }));
+        if (setFichaData) setFichaData(res.datos);
+      }
     } catch (error) {
       mostrarNotificacion("Error al Guardar", error.message || "No se pudieron guardar los datos.", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const ejecutarEliminacion = async () => {
+    if (!estudianteSeleccionado?.id) return;
+
+    setDeleting(true);
+    try {
+      const res = await centralizador2doAnoService.deleteByEstudiante(estudianteSeleccionado.id);
+      const nombreDefecto = construirNombreEstudiante(estudianteSeleccionado);
+      const resetState = {
+        ...initialFormState,
+        apellidos_nombres: nombreDefecto,
+        esfm_ua: estudianteSeleccionado.esfm_ua || 'ESFM/UA - El Alto'
+      };
+
+      setFormData(resetState);
+      if (setFichaData) setFichaData(resetState);
+      setModalConfirmDelete(false);
+      mostrarNotificacion("Registro Eliminado", res.message || "El centralizador fue eliminado con éxito.", "success");
+    } catch (error) {
+      setModalConfirmDelete(false);
+      mostrarNotificacion("Error al Eliminar", error.message || "No se pudo eliminar el registro.", "error");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -148,7 +180,7 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
       <button
         type="button"
         onClick={onClose}
-        disabled={saving}
+        disabled={saving || deleting}
         className="px-4 py-2 bg-slate-200 text-slate-700 font-extrabold rounded-xl hover:bg-slate-300 transition-colors text-xs cursor-pointer flex items-center gap-1 disabled:opacity-50"
       >
         <X size={14} /> Cerrar Ventana
@@ -157,7 +189,7 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
       <button
         type="button"
         onClick={handleSaveDetalles}
-        disabled={saving}
+        disabled={saving || deleting}
         className="px-5 py-2 bg-[#801B28] text-white font-bold rounded-xl text-xs flex items-center gap-1.5 hover:bg-rose-900 transition-all shadow-md cursor-pointer disabled:opacity-50"
       >
         {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -178,16 +210,24 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
           ) : (
             <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-4">
               
-              <div className="border-b border-slate-200 pb-2 text-center">
-                <h4 className="font-extrabold text-[#801B28] uppercase text-sm flex justify-center items-center gap-2">
-                  <Award size={18} /> CENTRALIZADOR DE EVALUACIÓN IEPC-PEC 2º AÑO DE FORMACIÓN
+              {/* ENCABEZADO SUPERIOR */}
+              <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-200 pb-2">
+                <h4 className="font-extrabold text-[#801B28] uppercase text-sm flex items-center gap-2">
+                  <Award size={18} /> {config?.titulo || "CENTRALIZADOR DE EVALUACIÓN IEPC-PEC 2º AÑO DE FORMACIÓN"}
                 </h4>
-                <p className="text-[11px] font-semibold text-slate-600 mt-1">
-                  Responsable de llenado: Docente Acompañante de la ESFM/UA
-                </p>
+
+                <button
+                  type="button"
+                  onClick={() => setModalConfirmDelete(true)}
+                  disabled={deleting || saving}
+                  className="px-3 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 font-bold rounded-xl text-xs flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
+                  {deleting ? "Eliminando..." : "Eliminar"}
+                </button>
               </div>
 
-              {/* DATOS REFERENCIALES */}
+              {/* DATOS REFERENCIALES (EDITABLES Y GUARDABLES) */}
               <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-3">
                 <span className="font-extrabold text-amber-900 uppercase text-[11px] flex items-center gap-1.5">
                   <GraduationCap size={15} /> DATOS REFERENCIALES DEL ESTUDIANTE:
@@ -195,20 +235,35 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Nombres y Apellidos:</label>
-                    <input type="text" readOnly value={formData.apellidos_nombres} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-extrabold text-slate-900 outline-none" />
+                    <input
+                      type="text"
+                      value={formData.apellidos_nombres ?? ''}
+                      onChange={(e) => handleCampoChange('apellidos_nombres', e.target.value)}
+                      className="w-full border border-amber-200 p-2 rounded-xl bg-white font-extrabold text-slate-900 outline-none focus:border-[#801B28]"
+                    />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">ESFM/UA:</label>
-                    <input type="text" readOnly value={formData.esfm_ua} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none" />
+                    <input
+                      type="text"
+                      value={formData.esfm_ua ?? ''}
+                      onChange={(e) => handleCampoChange('esfm_ua', e.target.value)}
+                      className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none focus:border-[#801B28]"
+                    />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Año de Formación:</label>
-                    <input type="text" readOnly value={formData.ano_formacion} className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none" />
+                    <input
+                      type="text"
+                      value={formData.ano_formacion ?? ''}
+                      onChange={(e) => handleCampoChange('ano_formacion', e.target.value)}
+                      className="w-full border border-amber-200 p-2 rounded-xl bg-white font-bold text-slate-800 outline-none focus:border-[#801B28]"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* TABLA DEL CENTRALIZADOR DE 2DO AÑO */}
+              {/* TABLA DE CALIFICACIONES */}
               <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
@@ -250,7 +305,7 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
                 </table>
               </div>
 
-              {/* CUADRO RESUMEN PROMEDIO CONSOLIDADO */}
+              {/* PROMEDIO CONSOLIDADO */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <div>
                   <label className="block font-extrabold text-slate-500 uppercase text-[10px]">PROMEDIO TOTAL CONSOLIDADO:</label>
@@ -271,7 +326,7 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
                 <label className="block font-bold text-slate-700 text-[10px]">Observaciones y/o sugerencias:</label>
                 <textarea
                   rows="3"
-                  value={formData.observaciones}
+                  value={formData.observaciones ?? ''}
                   onChange={(e) => handleCampoChange('observaciones', e.target.value)}
                   className="w-full border p-2.5 rounded-xl font-medium text-slate-800 text-xs outline-none focus:border-[#801B28]"
                   placeholder="Escriba aquí las observaciones finales..."
@@ -281,32 +336,32 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
               {/* LUGAR Y FECHA DE EMISIÓN */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <span className="font-extrabold text-[#801B28] uppercase text-[11px] flex items-center gap-1.5">
-                  <MapPin size={14} /> LUGAR Y FECHA
+                  <MapPin size={14} /> LUGAR Y FECHA DE EMISIÓN DE LA CENTRALIZACIÓN
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Ciudad / Localidad:</label>
-                    <input type="text" value={formData.lugar_ciudad} onChange={(e) => handleCampoChange('lugar_ciudad', e.target.value)} className="w-full border p-2 rounded-xl bg-white text-slate-800 font-bold" />
+                    <input type="text" value={formData.lugar_ciudad ?? ''} onChange={(e) => handleCampoChange('lugar_ciudad', e.target.value)} className="w-full border p-2 rounded-xl bg-white text-slate-800 font-bold" />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Departamento:</label>
-                    <select value={formData.departamento} onChange={(e) => handleCampoChange('departamento', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold">
+                    <select value={formData.departamento ?? DEPARTAMENTOS_BOLIVIA[0]} onChange={(e) => handleCampoChange('departamento', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold">
                       {DEPARTAMENTOS_BOLIVIA.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Día:</label>
-                    <input type="text" value={formData.dia} onChange={(e) => handleCampoChange('dia', e.target.value)} className="w-full border p-2 rounded-xl font-mono font-bold bg-white text-slate-800" />
+                    <input type="text" value={formData.dia ?? ''} onChange={(e) => handleCampoChange('dia', e.target.value)} className="w-full border p-2 rounded-xl font-mono font-bold bg-white text-slate-800" />
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Mes:</label>
-                    <select value={formData.mes} onChange={(e) => handleCampoChange('mes', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold uppercase">
+                    <select value={formData.mes ?? MESES_ANIO[0]} onChange={(e) => handleCampoChange('mes', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold uppercase">
                       {MESES_ANIO.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Año:</label>
-                    <input type="text" value={formData.ano} onChange={(e) => handleCampoChange('ano', e.target.value)} className="w-full border p-2 rounded-xl font-mono font-bold bg-white text-slate-800" />
+                    <input type="text" value={formData.ano ?? ''} onChange={(e) => handleCampoChange('ano', e.target.value)} className="w-full border p-2 rounded-xl font-mono font-bold bg-white text-slate-800" />
                   </div>
                 </div>
               </div>
@@ -316,12 +371,24 @@ export const Centralizador2doAno = ({ isOpen, onClose, fichaData, setFichaData, 
         </div>
       </ModalBase>
 
+      {/* MODAL DE NOTIFICACIÓN */}
       <ConfirmModal
         isOpen={modalNotif.isOpen}
         onClose={() => setModalNotif({ ...modalNotif, isOpen: false })}
         titulo={modalNotif.titulo}
         mensaje={modalNotif.mensaje}
         tipo={modalNotif.tipo}
+      />
+
+      {/* MODAL ELIMINAR */}
+      <ConfirmModal
+        isOpen={modalConfirmDelete}
+        onClose={() => setModalConfirmDelete(false)}
+        onConfirm={ejecutarEliminacion}
+        titulo="¿Eliminar Centralizador de Calificaciones?"
+        mensaje="Esta acción borrará de forma permanente el registro guardado de este centralizador."
+        tipo="danger"
+        cargando={deleting}
       />
     </>
   );

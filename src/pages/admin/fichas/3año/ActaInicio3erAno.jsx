@@ -6,7 +6,6 @@ import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, ESPECIALIDADES_ESFM } from
 import { actaInicio3erAnoService } from '../../../../services/fichas/3año/actaInicio3erAnoService';
 import { especialidadService } from '../../../../services/especialidadService';
 
-// Helper para garantizar que la fecha tenga el formato YYYY-MM-DD que exige <input type="date">
 const formatFechaInput = (fecha) => {
   if (!fecha) return '';
   const str = String(fecha);
@@ -31,6 +30,15 @@ export const ActaInicio3erAno = ({ isOpen, onClose, fichaData, setFichaData, lis
 
   const [modalNotif, setModalNotif] = useState({ isOpen: false, titulo: '', mensaje: '', tipo: 'info' });
   const [modalConfirmDelete, setModalConfirmDelete] = useState(false);
+
+  // Filtrado de listas de docentes por rol/tipo
+  const docentesGuias = listaDocentes.filter(d => 
+    String(d.rol || d.tipo || '').toUpperCase().includes('GUIA')
+  );
+  
+  const docentesAcompanantes = listaDocentes.filter(d => 
+    !String(d.rol || d.tipo || '').toUpperCase().includes('GUIA')
+  );
 
   const initialFormState = {
     apellidos_nombres: '',
@@ -358,17 +366,41 @@ export const ActaInicio3erAno = ({ isOpen, onClose, fichaData, setFichaData, lis
                 </div>
               </div>
 
-              {/* DOCENTES */}
+              {/* ASIGNACIÓN DE DOCENTES GUÍA Y ACOMPAÑANTE */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <span className="font-extrabold text-slate-800 uppercase text-[11px] flex items-center gap-1.5">
                   <UserCheck size={15} /> ASIGNACIÓN DE DOCENTES
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
+                    <label className="block font-bold text-slate-700 text-[10px] mb-1">Docente Guía UE/CEA/CEE:</label>
+                    <select 
+                      value={formData.docente_guia_id} 
+                      onChange={(e) => handleChange('docente_guia_id', e.target.value)} 
+                      className="w-full border p-2 rounded-xl bg-white font-bold text-slate-800"
+                    >
+                      <option value="">-- Seleccionar Docente Guía --</option>
+                      {(docentesGuias.length > 0 ? docentesGuias : listaDocentes).map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.apellidos_nombres || d.nombres_apellidos || `${d.nombre || ''} ${d.apellido || ''}`.trim()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Docente Acompañante ESFM/UA:</label>
-                    <select value={formData.docente_acompanante_id} onChange={(e) => handleChange('docente_acompanante_id', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold text-slate-800">
+                    <select 
+                      value={formData.docente_acompanante_id} 
+                      onChange={(e) => handleChange('docente_acompanante_id', e.target.value)} 
+                      className="w-full border p-2 rounded-xl bg-white font-bold text-slate-800"
+                    >
                       <option value="">-- Seleccionar Docente Acompañante --</option>
-                      {listaDocentes.map(d => <option key={d.id} value={d.id}>{d.nombre} {d.apellido}</option>)}
+                      {(docentesAcompanantes.length > 0 ? docentesAcompanantes : listaDocentes).map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.apellidos_nombres || d.nombres_apellidos || `${d.nombre || ''} ${d.apellido || ''}`.trim()}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

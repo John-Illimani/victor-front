@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from '../1año/ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { GraduationCap, MapPin, Plus, Trash2, Save, Loader2, Trash, X } from 'lucide-react';
+import { GraduationCap, MapPin, Save, Loader2, Trash, X } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, convertirNumeroALiteral } from '../../../../utils/camposFichas';
 import { fichaB24toAnoService } from '../../../../services/fichas/4año/fichaB24toAnoService';
 
@@ -9,8 +9,11 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
   const codigoFicha = "4_B2";
   const config = CONFIGURACION_FICHAS[codigoFicha];
 
+  const pdcs = ['PDC 1', 'PDC 2', 'PDC 3', 'PDC 4', 'PDC 5'];
+
   const criteriosEvaluacion = [
     {
+      key: 'cat_0',
       categoria: 'PLANIFICACIÓN – CONCRECIÓN DEL PDC',
       items: [
         'Existe coherencia y relación del objetivo con el proceso pedagógico y los criterios de evaluación.',
@@ -18,6 +21,7 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
       ]
     },
     {
+      key: 'cat_1',
       categoria: 'DESARROLLO DE CONTENIDOS',
       items: [
         'Recupera conocimientos y experiencias de las y los estudiantes.',
@@ -28,6 +32,7 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
       ]
     },
     {
+      key: 'cat_2',
       categoria: 'ESTRATEGIAS METODOLÓGICAS',
       items: [
         'Promueve el trabajo en equipo y el diálogo.',
@@ -37,6 +42,7 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
       ]
     },
     {
+      key: 'cat_3',
       categoria: 'EVALUACIÓN',
       items: [
         'Realiza la evaluación según el objetivo planificado en el PDC.',
@@ -54,7 +60,6 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
 
   const initialFormState = {
     apellidos_nombres: '',
-    columnas_pdc: ['PDC 1', 'PDC 2', 'PDC 3', 'PDC 4', 'PDC 5'],
     calificaciones: {},
     promedios_pdc: {},
     promedio_numeral: 0,
@@ -86,7 +91,6 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
               ...initialFormState,
               ...d,
               apellidos_nombres: nombreCompleto,
-              columnas_pdc: d.columnas_pdc || initialFormState.columnas_pdc,
               calificaciones: d.calificaciones || {},
               promedios_pdc: d.promedios_pdc || {},
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
@@ -96,7 +100,7 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
               ano: String(d.ano || '2026').slice(0, 4)
             };
 
-            const calculos = recalcularNotas(updatedState.columnas_pdc, updatedState.calificaciones);
+            const calculos = recalcularNotas(updatedState.calificaciones);
             setFormData({ ...updatedState, ...calculos });
             if (setFichaData) setFichaData({ ...updatedState, ...calculos });
           } else {
@@ -121,59 +125,55 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
   };
 
-  const recalcularNotas = (cols, califs) => {
+  const recalcularNotas = (califs) => {
     const proms = {};
-    const valoresPdc = [];
+    const promediosPdcValidos = [];
 
-    cols.forEach(pdc => {
-      const notasDelPdc = [];
-      criteriosEvaluacion.forEach((cat, cIdx) => {
-        cat.items.forEach((_, iIdx) => {
-          const key = `cat_${cIdx}_item_${iIdx}`;
-          const val = parseFloat(califs[pdc]?.[key]);
-          if (!isNaN(val)) {
-            notasDelPdc.push(val);
-          }
-        });
+    pdcs.forEach(pdc => {
+      const notasPdc = [];
+      criteriosEvaluacion.forEach(cat => {
+        const val = parseFloat(califs[pdc]?.[cat.key]);
+        if (!isNaN(val)) {
+          notasPdc.push(val);
+        }
       });
 
-      if (notasDelPdc.length > 0) {
-        const promPdc = parseFloat((notasDelPdc.reduce((a, b) => a + b, 0) / notasDelPdc.length).toFixed(2));
+      if (notasPdc.length > 0) {
+        const promPdc = parseFloat((notasPdc.reduce((a, b) => a + b, 0) / notasPdc.length).toFixed(2));
         proms[pdc] = promPdc;
-        valoresPdc.push(promPdc);
+        promediosPdcValidos.push(promPdc);
       } else {
         proms[pdc] = 0;
       }
     });
 
-    const promGeneral = valoresPdc.length > 0 
-      ? parseFloat((valoresPdc.reduce((a, b) => a + b, 0) / valoresPdc.length).toFixed(2)) 
+    const promGeneral = promediosPdcValidos.length > 0 
+      ? parseFloat((promediosPdcValidos.reduce((a, b) => a + b, 0) / promediosPdcValidos.length).toFixed(2)) 
       : 0;
 
     return {
       promedios_pdc: proms,
       promedio_numeral: promGeneral,
-      promedio_final: promGeneral,
       promedio_literal: convertirNumeroALiteral(promGeneral)
     };
   };
 
-  const handleNotaItemChange = (pdc, catIdx, itemIdx, value) => {
-    let num = parseFloat(value);
-    if (isNaN(num)) num = '';
-    else if (num < 0) num = 0;
-    else if (num > 100) num = 100;
+  const handleNotaChange = (pdc, catKey, value) => {
+    let num = value === '' ? '' : parseFloat(value);
+    if (num !== '' && !isNaN(num)) {
+      if (num < 0) num = 0;
+      if (num > 100) num = 100;
+    }
 
-    const itemKey = `cat_${catIdx}_item_${itemIdx}`;
     const newCalifs = {
       ...(formData.calificaciones || {}),
       [pdc]: {
         ...(formData.calificaciones?.[pdc] || {}),
-        [itemKey]: num
+        [catKey]: num
       }
     };
 
-    const calculos = recalcularNotas(formData.columnas_pdc, newCalifs);
+    const calculos = recalcularNotas(newCalifs);
 
     const updated = {
       ...formData,
@@ -181,34 +181,6 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
       ...calculos
     };
 
-    setFormData(updated);
-    if (setFichaData) setFichaData(updated);
-  };
-
-  const addPdcColumna = () => {
-    const nextNum = formData.columnas_pdc.length + 1;
-    const newCols = [...formData.columnas_pdc, `PDC ${nextNum}`];
-    const calculos = recalcularNotas(newCols, formData.calificaciones || {});
-
-    const updated = {
-      ...formData,
-      columnas_pdc: newCols,
-      ...calculos
-    };
-    setFormData(updated);
-    if (setFichaData) setFichaData(updated);
-  };
-
-  const removePdcColumna = (index) => {
-    if (formData.columnas_pdc.length <= 1) return;
-    const newCols = formData.columnas_pdc.filter((_, i) => i !== index);
-    const calculos = recalcularNotas(newCols, formData.calificaciones || {});
-
-    const updated = {
-      ...formData,
-      columnas_pdc: newCols,
-      ...calculos
-    };
     setFormData(updated);
     if (setFichaData) setFichaData(updated);
   };
@@ -297,7 +269,7 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
               
               <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-2">
                 <span className="font-extrabold text-[#801B28] uppercase text-xs">
-                  FICHA B-2 - CONCRECIÓN CURRICULAR (EVALUACIÓN POR PDC)
+                  FICHA B-2 - CONCRECIÓN CURRICULAR (5 PDCs)
                 </span>
 
                 <button
@@ -311,7 +283,7 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
                 </button>
               </div>
 
-              {/* DATOS REFERENCIALES SOLO NOMBRE */}
+              {/* ESTUDIANTE */}
               <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-2">
                 <span className="font-extrabold text-amber-900 uppercase text-[11px] flex items-center gap-1.5">
                   <GraduationCap size={15} /> Estudiante:
@@ -324,101 +296,83 @@ export const FichaB2_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
                 />
               </div>
 
-              {/* MATRIZ COMPLETA DE CUALIFICACIÓN CON AGREGADO DE COLUMNAS */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-4">
-                <div className="flex justify-between items-center border-b pb-2">
-                  <span className="font-extrabold text-slate-800 uppercase text-[11px]">
-                    MATRIZ DE VALORACIÓN POR PDC
-                  </span>
-                  <button
-                    type="button"
-                    onClick={addPdcColumna}
-                    className="px-3 py-1.5 bg-[#801B28] text-white font-bold rounded-xl text-[10px] flex items-center gap-1 shadow-sm hover:bg-[#a32334] transition-all cursor-pointer"
-                  >
-                    <Plus size={13} /> Agregar Columna PDC
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left border border-slate-200">
-                    <thead>
-                      <tr className="bg-amber-500 text-white font-bold text-center">
-                        <th className="p-3 border border-amber-600 w-2/5 text-left uppercase text-[10px]">
-                          Criterios de Evaluación
+              {/* TABLA DE EVALUACIÓN CON 5 PDCs */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-4 overflow-x-auto">
+                <table className="w-full border-collapse text-left border border-slate-300">
+                  <thead>
+                    <tr className="bg-amber-500 text-white font-bold text-center">
+                      <th className="p-3 border border-amber-600 min-w-[220px] text-left uppercase text-[10px]">
+                        Criterios de Evaluación
+                      </th>
+                      {pdcs.map((pdc) => (
+                        <th key={pdc} className="p-2 border border-amber-600 min-w-[75px] text-center">
+                          <div className="flex flex-col items-center">
+                            <span className="font-black text-xs">{pdc}</span>
+                            <span className="text-[8px] font-normal opacity-90">De 1 a 100 ptos</span>
+                          </div>
                         </th>
-                        {formData.columnas_pdc?.map((pdc, cIdx) => (
-                          <th key={pdc} className="p-2 border border-amber-600 min-w-[90px] text-center">
-                            <div className="flex flex-col items-center justify-between gap-1">
-                              <span className="font-black text-xs">{pdc}</span>
-                              <span className="text-[9px] font-normal opacity-90">(De 0 a 100)</span>
-                              {formData.columnas_pdc.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => removePdcColumna(cIdx)}
-                                  className="text-rose-100 hover:text-white p-0.5 cursor-pointer"
-                                  title="Eliminar esta columna"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {criteriosEvaluacion.map((cat, catIdx) => (
-                        <React.Fragment key={cat.categoria}>
-                          {/* TITULO DE CATEGORIA */}
-                          <tr className="bg-slate-100">
-                            <td colSpan={formData.columnas_pdc.length + 1} className="p-2 font-black text-slate-800 uppercase text-[10px] border">
-                              {cat.categoria}
-                            </td>
-                          </tr>
-                          {/* FILAS DE CRITERIOS */}
-                          {cat.items.map((itemText, itemIdx) => (
-                            <tr key={itemIdx} className="hover:bg-slate-50/80">
-                              <td className="p-2 border font-medium text-slate-700 leading-snug">
-                                {itemText}
-                              </td>
-                              {formData.columnas_pdc?.map((pdc) => (
-                                <td key={pdc} className="p-1.5 border text-center">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    placeholder="0-100"
-                                    value={formData.calificaciones?.[pdc]?.[`cat_${catIdx}_item_${itemIdx}`] ?? ''}
-                                    onChange={(e) => handleNotaItemChange(pdc, catIdx, itemIdx, e.target.value)}
-                                    className="w-full border p-1.5  text-center font-mono font-bold  border-none"
-                                  />
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </React.Fragment>
                       ))}
-
-                      {/* FILA DE PROMEDIO INDIVIDUAL POR PDC */}
-                      <tr className="bg-amber-50/80 font-black border-t-2 border-slate-300">
-                        <td className="p-2 border text-slate-900 uppercase">
-                          Promedio (Número entero) De cada PDC
-                        </td>
-                        {formData.columnas_pdc?.map((pdc) => (
-                          <td key={pdc} className="p-2 border text-center font-mono text-sm text-[#801B28]">
-                            {formData.promedios_pdc?.[pdc] || '0.00'}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-300">
+                    {criteriosEvaluacion.map((cat) => (
+                      <React.Fragment key={cat.key}>
+                        {/* TÍTULO DE CATEGORÍA */}
+                        <tr className="bg-slate-100">
+                          <td colSpan={6} className="p-2 font-black text-slate-800 uppercase text-[10px] border">
+                            {cat.categoria}
                           </td>
+                        </tr>
+
+                        {/* LISTADO DE ITEMS CON 1 INPUT POR PDC PARA LA CATEGORÍA COMPLETA */}
+                        {cat.items.map((itemText, itemIdx) => (
+                          <tr key={itemIdx} className="hover:bg-slate-50/80">
+                            <td className="p-2 border font-medium text-slate-700 leading-snug">
+                              {itemText}
+                            </td>
+
+                            {/* CADA PDC TIENE UN ÚNICO INPUT UNIFICADO PARA TODA LA CATEGORÍA */}
+                            {itemIdx === 0 && pdcs.map((pdc) => (
+                              <td
+                                key={pdc}
+                                rowSpan={cat.items.length}
+                                className="p-1.5 border text-center align-middle bg-slate-50/40"
+                              >
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="0-100"
+                                  value={formData.calificaciones?.[pdc]?.[cat.key] ?? ''}
+                                  onChange={(e) => handleNotaChange(pdc, cat.key, e.target.value)}
+                                  className="w-16 border border-slate-300 p-2 rounded-xl text-center font-mono font-bold text-xs bg-white focus:border-[#801B28] focus:ring-1 focus:ring-[#801B28] outline-none shadow-sm"
+                                />
+                              </td>
+                            ))}
+                          </tr>
                         ))}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                      </React.Fragment>
+                    ))}
+
+                    {/* FILA DE PROMEDIO INDIVIDUAL POR PDC */}
+                    <tr className="bg-amber-50/80 font-black border-t-2 border-slate-300">
+                      <td className="p-2 border text-slate-900 uppercase">
+                        Promedio (Número entero) De cada PDC
+                      </td>
+                      {pdcs.map((pdc) => (
+                        <td key={pdc} className="p-2 border text-center font-mono text-xs text-[#801B28]">
+                          {Math.round(formData.promedios_pdc?.[pdc] || 0)}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
 
                 {/* PUNTAJE FINAL GENERAL */}
                 <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Puntaje Final Numeral:</label>
-                    <div className="font-mono font-black text-2xl text-[#801B28]">{formData.promedio_numeral || '0.00'} / 100 PTS</div>
+                    <div className="font-mono font-black text-2xl text-[#801B28]">{Math.round(formData.promedio_numeral || 0)} / 100 PTS</div>
                   </div>
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Literal:</label>

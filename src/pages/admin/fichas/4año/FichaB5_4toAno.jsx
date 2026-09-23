@@ -11,40 +11,42 @@ export const FichaB5_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
 
   const dimensionesEvaluacion = [
     {
+      key: 'c1',
       dimension: 'SER',
       criterios: [
-        { key: 'c1', label: 'Responsabilidad, compromiso y puntualidad en el desarrollo de la práctica educativa.' },
-        { key: 'c2', label: 'Respeto en el trato con estudiantes, padres/ madres de familia, maestras, maestros y personal de la UE/CEA/CEE.' },
-        { key: 'c3', label: 'Promueve la práctica de valores sociocomunitarios en la UE/CEA/CEE.' }
+        'Responsabilidad, compromiso y puntualidad en el desarrollo de la práctica educativa.',
+        'Respeto en el trato con estudiantes, padres/ madres de familia, maestras, maestros y personal de la UE/CEA/CEE.',
+        'Promueve la práctica de valores sociocomunitarios en la UE/CEA/CEE.'
       ]
     },
     {
+      key: 'c2',
       dimension: 'SABER',
       criterios: [
-        { key: 'c4', label: 'Conocimiento y manejo de elementos curriculares de la planificación.' },
-        { key: 'c5', label: 'Conocimiento y dominio de elementos propios de su especialidad.' },
-        { key: 'c6', label: 'Promueve el fortalecimiento del pensamiento crítico y reflexivo con las y los estudiantes.' }
+        'Conocimiento y manejo de elementos curriculares de la planificación.',
+        'Conocimiento y dominio de elementos propios de su especialidad.',
+        'Promueve el fortalecimiento del pensamiento crítico y reflexivo con las y los estudiantes.'
       ]
     },
     {
+      key: 'c3',
       dimension: 'HACER',
       criterios: [
-        { key: 'c7', label: 'Dominio de aula usando estrategias pertinentes.' },
-        { key: 'c8', label: 'Manifiesta creatividad en el uso de recursos materiales y educativos.' },
-        { key: 'c9', label: 'Utiliza instrumentos de evaluación durante la concreción curricular.' }
+        'Dominio de aula usando estrategias pertinentes.',
+        'Manifiesta creatividad en el uso de recursos materiales y educativos.',
+        'Utiliza instrumentos de evaluación durante la concreción curricular.'
       ]
     },
     {
+      key: 'c4',
       dimension: 'DECIDIR',
       criterios: [
-        { key: 'c10', label: 'Asume las sugerencias y observaciones a los PDC elaborados.' },
-        { key: 'c11', label: 'Aplica acciones de manera oportuna para la solución de problemas en el aula.' },
-        { key: 'c12', label: 'Demuestra iniciativa en la solución de problemas emergentes de la comunidad educativa.' }
+        'Asume las sugerencias y observaciones a los PDC elaborados.',
+        'Aplica acciones de manera oportuna para la solución de problemas en el aula.',
+        'Demuestra iniciativa en la solución de problemas emergentes de la comunidad educativa.'
       ]
     }
   ];
-
-  const todasLasKeys = dimensionesEvaluacion.flatMap(d => d.criterios.map(c => c.key));
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,7 +55,6 @@ export const FichaB5_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
   const [modalNotif, setModalNotif] = useState({ isOpen: false, titulo: '', mensaje: '', tipo: 'info' });
   const [modalConfirmDelete, setModalConfirmDelete] = useState(false);
 
-  // Función para determinar si el valor es entero o decimal antes de asignarlo al input
   const formatInputValue = (val) => {
     if (val === null || val === undefined || val === '') return '';
     const num = Number(val);
@@ -63,8 +64,7 @@ export const FichaB5_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
 
   const initialFormState = {
     apellidos_nombres: '',
-    c1: '', c2: '', c3: '', c4: '', c5: '', c6: '',
-    c7: '', c8: '', c9: '', c10: '', c11: '', c12: '',
+    c1: '', c2: '', c3: '', c4: '',
     promedio_numeral: 0,
     promedio_literal: 'CERO CON 00/100',
     observaciones: '',
@@ -91,16 +91,13 @@ export const FichaB5_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
           if (res.existe && res.datos) {
             const d = res.datos;
 
-            // Formatear dinámicamente cada criterio (c1...c12)
-            const criteriosFormateados = {};
-            todasLasKeys.forEach(k => {
-              criteriosFormateados[k] = formatInputValue(d[k]);
-            });
-
             const updatedState = {
               ...initialFormState,
               ...d,
-              ...criteriosFormateados,
+              c1: formatInputValue(d.c1),
+              c2: formatInputValue(d.c2),
+              c3: formatInputValue(d.c3),
+              c4: formatInputValue(d.c4),
               apellidos_nombres: nombreCompleto,
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
               departamento: d.departamento || DEPARTAMENTOS_BOLIVIA[0],
@@ -133,7 +130,8 @@ export const FichaB5_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
   };
 
   const recalcularPromedioGeneral = (formState) => {
-    const notasValidas = todasLasKeys.map(k => parseFloat(formState[k])).filter(n => !isNaN(n));
+    const keys = ['c1', 'c2', 'c3', 'c4'];
+    const notasValidas = keys.map(k => parseFloat(formState[k])).filter(n => !isNaN(n));
     const prom = notasValidas.length > 0 ? parseFloat((notasValidas.reduce((a, b) => a + b, 0) / notasValidas.length).toFixed(2)) : 0;
 
     const updated = {
@@ -278,40 +276,66 @@ export const FichaB5_4toAno = ({ isOpen, onClose, fichaData, setFichaData, estud
                 La o el docente guía realiza seguimiento a cada integrante del ECTG antes de la finalización de la PEC, valorando la dimensión formativa, el dominio teórico-metodológico, la concreción y la capacidad de proponer mejoras.
               </div>
 
-              {/* CRITERIOS DE EVALUACIÓN POR DIMENSIÓN */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-4">
-                <span className="font-extrabold text-slate-800 uppercase text-[11px] block border-b pb-2">
-                  CRITERIOS DE EVALUACIÓN (VALORACIÓN DEL 1 A 100)
-                </span>
+              {/* CRITERIOS DE EVALUACIÓN CON 1 INPUT POR DIMENSIÓN */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-4 overflow-x-auto">
+                <table className="w-full border-collapse text-left border border-slate-300">
+                  <thead>
+                    <tr className="bg-amber-500 text-white font-bold text-center text-[10px]">
+                      <th className="p-2.5 border border-amber-600 min-w-[220px] text-left uppercase" colSpan={2}>
+                        Criterio de evaluación
+                      </th>
+                      <th className="p-2.5 border border-amber-600 w-[140px] text-center uppercase">
+                        Valoración del 1 a 100
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-300">
+                    {dimensionesEvaluacion.map((dim) => (
+                      <React.Fragment key={dim.key}>
+                        {dim.criterios.map((critText, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            {/* MINI COLUMNA VERTICAL CON NOMBRE DE LA DIMENSIÓN */}
+                            {idx === 0 && (
+                              <td
+                                rowSpan={dim.criterios.length}
+                                className="p-2 border font-black text-slate-800 uppercase text-[10px] bg-slate-100 text-center align-middle w-10"
+                              >
+                                <span className="[writing-mode:vertical-lr] rotate-180 inline-block">
+                                  {dim.dimension}
+                                </span>
+                              </td>
+                            )}
 
-                {dimensionesEvaluacion.map((dim) => (
-                  <div key={dim.dimension} className="space-y-2">
-                    <div className="bg-rose-50/80 p-2 rounded-xl border border-rose-200">
-                      <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wider block">
-                        DIMENSIÓN {dim.dimension}
-                      </span>
-                    </div>
+                            {/* TEXTO DEL CRITERIO */}
+                            <td className="p-2 border font-medium text-slate-700 text-[11px] leading-snug">
+                              {critText}
+                            </td>
 
-                    <div className="space-y-1.5 pl-1">
-                      {dim.criterios.map((crit) => (
-                        <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                          <span className="sm:col-span-5 font-medium text-slate-800 text-[11px]">{crit.label}</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="any"
-                            placeholder="0-100"
-                            value={formatInputValue(formData[crit.key])}
-                            onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                            className="w-full border p-2 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                            {/* INPUT ÚNICO DE VALORACIÓN POR CADA DIMENSIÓN */}
+                            {idx === 0 && (
+                              <td
+                                rowSpan={dim.criterios.length}
+                                className="p-2 border text-center align-middle bg-slate-50/50"
+                              >
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="0-100"
+                                  value={formatInputValue(formData[dim.key])}
+                                  onChange={(e) => handleNotaChange(dim.key, e.target.value)}
+                                  className="w-20 border border-slate-300 p-2 rounded-xl text-center font-mono font-bold text-xs bg-white focus:border-[#801B28] focus:ring-1 focus:ring-[#801B28] outline-none shadow-sm"
+                                />
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
 
+                {/* PUNTAJE FINAL GENERAL */}
                 <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Promedio Final Numeral:</label>

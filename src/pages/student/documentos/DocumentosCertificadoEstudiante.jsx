@@ -8,12 +8,10 @@ import {
   AlertCircle, 
   XCircle,
   CheckCircle2,
-  Lock,
-  FileText
+  Lock
 } from 'lucide-react';
 
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 // SERVICIOS DE APIS DE CENTRALIZADORES POR AÑO DE FORMACIÓN
 import { centralizador1erAnoService } from '../../../services/fichas/1año/centralizador1erAnoService';
@@ -41,9 +39,16 @@ const formatNota = (valor) => {
   return Number.isInteger(num) ? `${num}` : `${num.toFixed(1)}`;
 };
 
+// HELPER PARA OBTENER MES EN ESPAÑOL
+const obtenerMesLetras = (mesIndex) => {
+  const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  return meses[mesIndex];
+};
+
 export const DocumentosCertificadoEstudiante = () => {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
   const [promedioGeneral, setPromedioGeneral] = useState(0);
@@ -113,123 +118,155 @@ export const DocumentosCertificadoEstudiante = () => {
   const codigoCertificado = `CERT-IEPC-2026-${estudianteLogueado?.ci || '000000'}`;
   const fechaEmisionStr = new Date().toLocaleDateString('es-BO');
 
-  // GENERADOR DE CERTIFICADO DE CONCLUSIÓN EN PDF
-  const handleDownloadPDF = () => {
-    if (!esAprobado) return;
-
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'letter'
-    });
-
-    const nombreCompleto = `${estudianteLogueado?.nombre || ''} ${estudianteLogueado?.apellido || ''}`.trim();
-
-    // MARCO EXTERIOR Y DECORATIVO
-    doc.setDrawColor(128, 27, 40); // #801B28
-    doc.setLineWidth(1.5);
-    doc.rect(8, 8, 263, 199);
-
-    doc.setDrawColor(140, 115, 26); // #8C731A
-    doc.setLineWidth(0.5);
-    doc.rect(11, 11, 257, 193);
-
-    // ENCABEZADO INSTITUCIONAL
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(128, 27, 40);
-    doc.text('ESTADO PLURINACIONAL DE BOLIVIA — MINISTERIO DE EDUCACIÓN', 139.5, 25, { align: 'center' });
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(51, 65, 85);
-    doc.text('ESCUELA SUPERIOR DE FORMACIÓN DE MAESTROS / UNIDAD ACADÉMICA', 139.5, 31, { align: 'center' });
-
-    // TÍTULO DEL CERTIFICADO
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(128, 27, 40);
-    doc.text('CERTIFICADO DE CONCLUSIÓN DE ESTUDIOS', 139.5, 48, { align: 'center' });
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'italic');
-    doc.setTextColor(100, 116, 139);
-    doc.text('INVESTIGACIÓN EDUCATIVA Y PRODUCCIÓN DE CONOCIMIENTOS (IEPC-PEC)', 139.5, 55, { align: 'center' });
-
-    // LÍNEA DIVISORIA
-    doc.setDrawColor(140, 115, 26);
-    doc.setLineWidth(0.8);
-    doc.line(70, 60, 209, 60);
-
-    // CUERPO DEL TEXTO
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(30, 41, 59);
-    doc.text('El Ministerio de Educación y la Dirección Académica certifican que la/el estudiante:', 139.5, 75, { align: 'center' });
-
-    // NOMBRE DEL ESTUDIANTE
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    doc.text(nombreCompleto.toUpperCase(), 139.5, 90, { align: 'center' });
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(30, 41, 59);
-    doc.text(`Con C.I. Nº ${estudianteLogueado?.ci || 'S/N'}, correspondiente al ${anoEstudiante.toUpperCase()} de Formación,`, 139.5, 102, { align: 'center' });
-    
-    const esp = estudianteLogueado?.especialidad ? `en la especialidad de ${estudianteLogueado.especialidad.toUpperCase()},` : '';
-    if (esp) {
-      doc.text(esp, 139.5, 108, { align: 'center' });
+  // FUNCIÓN PARA CARGAR LA IMAGEN Y CONVERTIRLA A BASE64
+  const getBase64ImageFromUrl = async (url) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn("No se pudo cargar el logo:", err);
+      return null;
     }
+  };
 
-    doc.text(`ha CONCLUIDO y APROBADO satisfactoriamente todas las etapas de la Práctica Educativa Comunitaria`, 139.5, esp ? 116 : 110, { align: 'center' });
-    doc.text(`correspondientes a la Gestión Académica 2026, alcanzando una Calificación Promedio Final de:`, 139.5, esp ? 122 : 116, { align: 'center' });
+  // GENERADOR DE CERTIFICADO DE CONCLUSIÓN EN PDF VERTICAL
+  const handleDownloadPDF = async () => {
+    if (!esAprobado) return;
+    setIsGenerating(true);
 
-    // CAJA DE PROMEDIO FINAL
-    const yCaja = esp ? 128 : 122;
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(128, 27, 40);
-    doc.roundedRect(104.5, yCaja, 70, 16, 3, 3, 'FD');
+    try {
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter' // 215.9 mm x 279.4 mm
+      });
 
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(128, 27, 40);
-    doc.text(`${formatNota(promedioGeneral)} PUNTOS — APROBADO`, 139.5, yCaja + 11, { align: 'center' });
+      const nombreCompleto = `${estudianteLogueado?.nombre || ''} ${estudianteLogueado?.apellido || ''}`.trim();
+      const especialidad = estudianteLogueado?.especialidad || 'S/E';
+      const ciStr = estudianteLogueado?.ci || 'S/N';
+      const anoFormacionUpper = anoEstudiante.toUpperCase();
 
-    // CÓDIGO Y FECHA
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'mono');
-    doc.setTextColor(100, 116, 139);
-    doc.text(`CÓDIGO DE VERIFICACIÓN: ${codigoCertificado}   |   FECHA DE EMISIÓN: ${fechaEmisionStr}`, 139.5, yCaja + 26, { align: 'center' });
+      // CARGAR LOGO
+      const logoBase64 = await getBase64ImageFromUrl('/logo_esfmthea.png');
 
-    // FIRMAS INSTITUCIONALES
-    const yFirmas = 180;
-    doc.setLineWidth(0.3);
-    doc.setDrawColor(51, 65, 85);
+      // ==========================================
+      // ENCABEZADOS Y TEXTOS SUPERIORES
+      // ==========================================
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      
+      // Izquierda (Simulación de logos institucionales del estado)
+      doc.text("BOLIVIA", 25, 20);
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'normal');
+      doc.text("MINISTERIO\nDE EDUCACIÓN", 25, 24);
 
-    doc.line(35, yFirmas, 95, yFirmas);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 41, 59);
-    doc.text('Docente Acompañante IEPC-PEC', 65, yFirmas + 4, { align: 'center' });
+      // Derecha (Texto ESFM THEA)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.text("ESCUELA SUPERIOR DE FORMACIÓN DE MAESTRAS Y MAESTROS", 190, 20, { align: 'right' });
+      doc.text("TECNOLÓGICO Y HUMANÍSTICO EL ALTO", 190, 24, { align: 'right' });
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(6);
+      doc.text("Fundado el 6 de marzo de 2009 por D.S. 29825 y Ley 3441", 190, 27, { align: 'right' });
 
-    doc.line(184, yFirmas, 244, yFirmas);
-    doc.text('Dirección General ESFM / UA', 214, yFirmas + 4, { align: 'center' });
+      // ==========================================
+      // TÍTULO CENTRAL: CERTIFICACIÓN
+      // ==========================================
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(22);
+      doc.text("CERTIFICACIÓN", 108, 55, { align: 'center' });
 
-    // MARCA DE AGUA LIGERAMENTE VISIBLE
-    doc.saveGraphicsState();
-    doc.setGState(new doc.GState({ opacity: 0.03 }));
-    doc.setFontSize(36);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(128, 27, 40);
-    doc.text('MINISTERIO DE EDUCACIÓN - IEPC PEC', 139.5, 115, {
-      align: 'center',
-      angle: 20
-    });
-    doc.restoreGraphicsState();
+      // ==========================================
+      // SUBTÍTULO DESCRIPTIVO
+      // ==========================================
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      const subTitleText = "LA DIRECCIÓN ACADÉMICA Y COORDINACIÓN ACADÉMICA IEPC - PEC DE LA ESCUELA SUPERIOR DE FORMACIÓN DE MAESTRAS Y MAESTROS TECNOLÓGICO Y HUMANÍSTICO EL ALTO, EN USO DE SUS ATRIBUCIONES:";
+      doc.text(subTitleText, 108, 70, { align: 'center', maxWidth: 150 });
 
-    doc.save(`Certificado_Conclusion_${estudianteLogueado?.ci || 'Estudiante'}.pdf`);
+      // ==========================================
+      // CUERPO DEL DOCUMENTO
+      // ==========================================
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text("CERTIFICA:", 25, 105);
+
+      const bodyText = `Que el/la estudiante ${nombreCompleto.toUpperCase()} con C.I. ${ciStr}, Código: Nº ${codigoCertificado} de la especialidad de ${especialidad.toUpperCase()} de ${anoFormacionUpper} DE FORMACIÓN de la Escuela Superior de Formación de Maestras y Maestros Tecnológico y Humanístico El Alto, CONCLUYÓ Y APROBÓ SATISFACTORIAMENTE LA PRÁCTICA EDUCATIVA COMUNITARIA en la gestión académica 2026, con una Calificación Promedio Final de ${formatNota(promedioGeneral)} PUNTOS, por tanto, queda habilitado para los fines consiguientes del(a) interesado(a).`;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      // Justificación de texto con maxWidth en jsPDF
+      doc.text(bodyText, 25, 120, { align: 'justify', maxWidth: 165, lineHeightFactor: 1.5 });
+
+      const finalPhrase = "Es cuanto se certifica para fines consiguientes del(a) interesado(a).";
+      doc.text(finalPhrase, 25, 155);
+
+      // ==========================================
+      // MARCA DE AGUA (CENTRAL)
+      // ==========================================
+      if (logoBase64) {
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.12 }));
+        // Centrar imagen: (215.9 - 100) / 2 = 57.95
+        doc.addImage(logoBase64, 'PNG', 58, 85, 100, 100);
+        doc.restoreGraphicsState();
+      }
+
+      // ==========================================
+      // FECHA (Alineada a la derecha)
+      // ==========================================
+      const diaActual = new Date().getDate();
+      const mesActual = obtenerMesLetras(new Date().getMonth());
+      const anoActual = new Date().getFullYear();
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.text(`El Alto, ${diaActual} de ${mesActual} de ${anoActual}`, 190, 180, { align: 'right' });
+
+      // ==========================================
+      // FIRMAS Y SELLOS
+      // ==========================================
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.4);
+
+      // Firma 1 (Izquierda) - Coordinador IEPC-PEC
+      doc.line(30, 235, 90, 235);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text("Coordinador(a) Académico IEPC-PEC", 60, 240, { align: 'center' });
+      doc.text("E.S.F.M.T.H. EL ALTO", 60, 244, { align: 'center' });
+
+      // Firma 2 (Derecha) - Director Académico
+      doc.line(125, 235, 185, 235);
+      doc.text("Director(a) Académico", 155, 240, { align: 'center' });
+      doc.text("E.S.F.M.T.H. EL ALTO", 155, 244, { align: 'center' });
+
+      // ==========================================
+      // PIE DE PÁGINA
+      // ==========================================
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.text('2026 "Año del Bicentenario con Calidad"', 108, 265, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.text('Av. Buenos Aires 1441 Zona Alta Chijini Distrito 12 El Alto • Teléfono/Fax: 2807049 • esfmthea.elalto.206@gmail.com', 108, 269, { align: 'center' });
+
+      // ==========================================
+      // GUARDAR DOCUMENTO
+      // ==========================================
+      doc.save(`Certificacion_IEPC_PEC_${ciStr}.pdf`);
+    } catch (error) {
+      console.error("Error al generar PDF de Certificación:", error);
+      alert("Hubo un error al generar el documento. Verifica la consola.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -240,7 +277,7 @@ export const DocumentosCertificadoEstudiante = () => {
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-[#F3EFCF] backdrop-blur-md border border-white/15">
-              <Award size={14} className="text-[#8C731A]" /> Acreditación Académica
+              <Award size={14} className="text-[#8C731A]" /> Certificación Académica
             </div>
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white flex items-center gap-3">
               Certificado de Conclusión
@@ -283,7 +320,7 @@ export const DocumentosCertificadoEstudiante = () => {
                   MINISTERIO DE EDUCACIÓN · ESFM / UA
                 </span>
                 <h2 className="text-xl font-black text-slate-900">
-                  CERTIFICADO DE CONCLUSIÓN DE ESTUDIOS IEPC-PEC
+                  CERTIFICACIÓN ACADÉMICA IEPC-PEC
                 </h2>
                 <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed">
                   Se certifica el registro académico de la/el estudiante <strong className="text-slate-900">{estudianteLogueado?.nombre} {estudianteLogueado?.apellido}</strong> con C.I. <strong className="text-slate-900">{estudianteLogueado?.ci || 'S/N'}</strong> en el <strong className="text-slate-900">{anoEstudiante}</strong> de Formación.
@@ -328,9 +365,11 @@ export const DocumentosCertificadoEstudiante = () => {
               {esAprobado ? (
                 <button
                   onClick={handleDownloadPDF}
-                  className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-6 py-3 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all cursor-pointer shrink-0"
+                  disabled={isGenerating}
+                  className={`flex items-center gap-2 rounded-2xl bg-[#801B28] px-6 py-3 text-xs font-extrabold text-white shadow-md hover:bg-[#a32334] transition-all shrink-0 ${isGenerating ? 'opacity-70 cursor-wait' : 'cursor-pointer'}`}
                 >
-                  <Download size={16} /> [ Descargar Certificado PDF ]
+                  {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} 
+                  {isGenerating ? '[ Generando... ]' : '[ Descargar Certificación PDF ]'}
                 </button>
               ) : (
                 <button

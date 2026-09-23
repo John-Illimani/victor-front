@@ -17,5 +17,14 @@ export const centralizador1erAnoService = {
     } catch (error) {
       throw error.response?.data || { message: "Error al guardar la fecha de centralización." };
     }
+  },
+
+  deleteCentralizador: async (estudiante_id) => {
+    try {
+      const response = await api.delete(`/1er-ano/centralizador/${estudiante_id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al eliminar el centralizador." };
+    }
   }
 };

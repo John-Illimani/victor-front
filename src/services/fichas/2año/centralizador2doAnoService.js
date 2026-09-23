@@ -15,7 +15,16 @@ export const centralizador2doAnoService = {
       const response = await api.post("/2do-ano/centralizador/guardar-detalles", { estudiante_id, datos });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: "Error al guardar los detalles del centralizador." };
+      throw error.response?.data || { message: "Error al guardar el centralizador." };
+    }
+  },
+
+  deleteByEstudiante: async (estudiante_id) => {
+    try {
+      const response = await api.delete(`/2do-ano/centralizador/${estudiante_id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: "Error al eliminar el centralizador de 2do año." };
     }
   }
 };

@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from '../1año/ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { GraduationCap, MapPin, UserCheck, Save, Loader2, Trash, X } from 'lucide-react';
+import { GraduationCap, MapPin, Save, Loader2, Trash, X } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, ESPECIALIDADES_ESFM, convertirNumeroALiteral } from '../../../../utils/camposFichas';
 import { fichaB13erAnoService } from '../../../../services/fichas/3año/fichaB13erAnoService';
 import { especialidadService } from '../../../../services/especialidadService';
 
-// Helper para formatear valores en los inputs (enteros sin decimales, decimales tal cual)
 const formatInputValue = (val) => {
   if (val === null || val === undefined || val === '') return '';
   const num = parseFloat(val);
@@ -19,14 +18,14 @@ export const FichaB1_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
   const config = CONFIGURACION_FICHAS[codigoFicha];
 
   const criteriosAntes = [
-    { key: 'c1', etapa: 'Antes de la PEC', label: 'Presenta Planes de Desarrollo Curricular y otros documentos de apoyo requeridos para el desarrollo de la práctica.' },
-    { key: 'c2', etapa: 'Antes de la PEC', label: 'Elabora la guía de concreción de cada PDC de manera clara, precisa y coherente con el proceso formativo.' }
+    { key: 'c1', obsKey: 'obs_c1', etapa: 'Antes de la PEC', label: 'Presenta Planes de Desarrollo Curricular y otros documentos de apoyo requeridos para el desarrollo de la práctica.' },
+    { key: 'c2', obsKey: 'obs_c2', etapa: 'Antes de la PEC', label: 'Elabora la guía de concreción de cada PDC de manera clara, precisa y coherente con el proceso formativo.' }
   ];
 
   const criteriosDurante = [
-    { key: 'c3', etapa: 'Durante la PEC', label: 'Demuestra responsabilidad y puntualidad en el desarrollo de la Práctica Educativa Comunitaria y del proceso investigativo en la UE/CEA/CEE.' },
-    { key: 'c4', etapa: 'Durante la PEC', label: 'Manifiesta iniciativa, creatividad y dominio en la concreción curricular y en las actividades vinculadas al diagnóstico socioparticipativo.' },
-    { key: 'c5', etapa: 'Durante la PEC', label: 'Aplica técnicas e instrumentos de investigación de manera pertinente para la identificación, análisis y priorización de necesidades, problemas y/o potencialidades.' }
+    { key: 'c3', obsKey: 'obs_c3', etapa: 'Durante la PEC', label: 'Demuestra responsabilidad y puntualidad en el desarrollo de la Práctica Educativa Comunitaria y del proceso investigativo en la UE/CEA/CEE.' },
+    { key: 'c4', obsKey: 'obs_c4', etapa: 'Durante la PEC', label: 'Manifiesta iniciativa, creatividad y dominio en la concreción curricular y en las actividades vinculadas al diagnóstico socioparticipativo.' },
+    { key: 'c5', obsKey: 'obs_c5', etapa: 'Durante la PEC', label: 'Aplica técnicas e instrumentos de investigación de manera pertinente para la identificación, análisis y priorización de necesidades, problemas y/o potencialidades.' }
   ];
 
   const todosCriterios = [...criteriosAntes, ...criteriosDurante];
@@ -43,13 +42,10 @@ export const FichaB1_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     apellidos_nombres: '',
     esfm_ua: 'ESFM Simón Bolívar / UA El Alto',
     especialidad: ESPECIALIDADES_ESFM[0],
-    c1: '',
-    c2: '',
-    c3: '',
-    c4: '',
-    c5: '',
+    c1: '', c2: '', c3: '', c4: '', c5: '',
+    obs_c1: '', obs_c2: '', obs_c3: '', obs_c4: '', obs_c5: '',
     puntaje_final: 0,
-    promedio_literal: 'CERO CON 00/100',
+    promedio_literal: 'CERO',
     recomendaciones: '',
     docente_acompanante_id: '',
     lugar_ciudad: 'El Alto',
@@ -104,6 +100,11 @@ export const FichaB1_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
               c3: formatInputValue(d.c3),
               c4: formatInputValue(d.c4),
               c5: formatInputValue(d.c5),
+              obs_c1: d.obs_c1 || '',
+              obs_c2: d.obs_c2 || '',
+              obs_c3: d.obs_c3 || '',
+              obs_c4: d.obs_c4 || '',
+              obs_c5: d.obs_c5 || '',
               puntaje_final: pf,
               promedio_literal: d.promedio_literal || convertirNumeroALiteral(pf),
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
@@ -225,6 +226,35 @@ export const FichaB1_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
     }
   };
 
+  const renderCriterioCard = (crit) => (
+    <div key={crit.key} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+      <span className="font-medium text-slate-800 text-xs block">{crit.label}</span>
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+        <div>
+          <label className="block font-extrabold text-[10px] text-slate-600 mb-0.5">Nota (1-100):</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="1-100"
+            value={formatInputValue(formData[crit.key])}
+            onChange={(e) => handleNotaChange(crit.key, e.target.value)}
+            className="w-full border p-1.5 rounded-xl bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
+          />
+        </div>
+        <div className="sm:col-span-3">
+          <label className="block font-extrabold text-[10px] text-slate-600 mb-0.5">Observación del Criterio:</label>
+          <input
+            type="text"
+            placeholder="Observación opcional para este criterio..."
+            value={formData[crit.obsKey] || ''}
+            onChange={(e) => handleCampoChange(crit.obsKey, e.target.value)}
+            className="w-full border p-1.5 rounded-xl bg-white text-xs text-slate-800 focus:border-[#801B28] outline-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   const footerButtons = (
     <div className="flex justify-end gap-2 w-full">
       <button
@@ -299,50 +329,26 @@ export const FichaB1_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
                 </div>
               </div>
 
-              {/* MATRIZ B-1 CON SUBTÍTULOS POR ETAPA */}
+              {/* MATRIZ CON CAMPOS INDIVIDUALES DE OBSERVACIÓN */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-4">
                 <span className="font-extrabold text-slate-800 uppercase text-[11px] block border-b border-slate-100 pb-2">
-                  CRITERIOS DE EVALUACIÓN DOCENTE ACOMPAÑANTE ESFM/UA
+                  CRITERIOS DE EVALUACIÓN Y OBSERVACIONES POR CRITERIO
                 </span>
 
                 {/* SECCIÓN 1: ANTES DE LA PEC */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
                     ANTES DE LA PEC
                   </span>
-                  {criteriosAntes.map(crit => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800">{crit.label}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
-                    </div>
-                  ))}
+                  {criteriosAntes.map(renderCriterioCard)}
                 </div>
 
                 {/* SECCIÓN 2: DURANTE LA PEC */}
-                <div className="space-y-2 pt-2">
+                <div className="space-y-3 pt-2">
                   <span className="font-black text-[#801B28] text-[11px] uppercase tracking-wide block bg-rose-50/80 p-2 rounded-xl border border-rose-100">
                     DURANTE LA PEC
                   </span>
-                  {criteriosDurante.map(crit => (
-                    <div key={crit.key} className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="sm:col-span-4 font-medium text-slate-800">{crit.label}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="1-100"
-                        value={formatInputValue(formData[crit.key])}
-                        onChange={(e) => handleNotaChange(crit.key, e.target.value)}
-                        className="w-full border p-1.5 rounded-lg bg-white font-mono font-bold text-center text-slate-900 focus:border-[#801B28] outline-none"
-                      />
-                    </div>
-                  ))}
+                  {criteriosDurante.map(renderCriterioCard)}
                 </div>
 
                 <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200 grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -352,18 +358,18 @@ export const FichaB1_3erAno = ({ isOpen, onClose, fichaData, setFichaData, lista
                   </div>
                   <div>
                     <label className="block font-black text-slate-700 text-[10px] uppercase">Promedio Literal:</label>
-                    <div className="font-extrabold text-xs text-slate-900 uppercase mt-2">{formData.promedio_literal || 'CERO CON 00/100'}</div>
+                    <div className="font-extrabold text-xs text-slate-900 uppercase mt-2">{formData.promedio_literal || 'CERO'}</div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 text-[10px] mb-1">Recomendaciones y/o Sugerencias:</label>
+                  <label className="block font-bold text-slate-700 text-[10px] mb-1">Recomendaciones y/o Sugerencias Generales:</label>
                   <textarea
                     rows="3"
                     value={formData.recomendaciones}
                     onChange={(e) => handleCampoChange('recomendaciones', e.target.value)}
                     className="w-full border p-2.5 rounded-xl font-medium text-slate-800 text-xs outline-none focus:border-[#801B28]"
-                    placeholder="Escriba aquí sus observaciones o sugerencias..."
+                    placeholder="Escriba aquí las recomendaciones generales..."
                   />
                 </div>
               </div>
