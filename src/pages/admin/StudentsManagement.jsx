@@ -19,7 +19,6 @@ import {
   Power,
   ToggleLeft,
   ToggleRight,
-  UserCheck,
 } from "lucide-react";
 
 import { studentService } from "../../services/studentService";
@@ -201,8 +200,7 @@ export const StudentsManagement = () => {
     genero: "",
     modalidad_ingreso: "ADMISION GENERAL",
     ano_formacion: "1er Año",
-    docente_acompanante_id: "",
-    docente_guia_id: "",
+    codigo_estudiante: "",
   });
 
   const showFeedback = (title, message, type = "success") => {
@@ -241,7 +239,7 @@ export const StudentsManagement = () => {
     const search = searchTerm.toLowerCase();
 
     const matchesSearch =
-      (student.username && student.username.toLowerCase().includes(search)) ||
+      (student.codigo_estudiante && student.codigo_estudiante.toLowerCase().includes(search)) ||
       fullName.includes(search) ||
       (student.ci && student.ci.includes(search));
 
@@ -398,8 +396,7 @@ export const StudentsManagement = () => {
       genero: student.genero || "",
       modalidad_ingreso: student.modalidad_ingreso || "ADMISION GENERAL",
       ano_formacion: student.ano_formacion || "1er Año",
-      docente_acompanante_id: student.docente_acompanante_id || "",
-      docente_guia_id: student.docente_guia_id || "",
+      codigo_estudiante: student.codigo_estudiante || "",
     });
     setShowStudentModal(true);
   };
@@ -420,8 +417,7 @@ export const StudentsManagement = () => {
       genero: "",
       modalidad_ingreso: "ADMISION GENERAL",
       ano_formacion: "1er Año",
-      docente_acompanante_id: "",
-      docente_guia_id: "",
+      codigo_estudiante: "",
     });
   };
 
@@ -528,7 +524,7 @@ export const StudentsManagement = () => {
     ) {
       showFeedback(
         "Calificación Inválida",
-        "La nota asignada debe encontrarse estrictamente entre 0 y 100 puntos.",
+        "La nota asignada debe encontrarse strictly entre 0 y 100 puntos.",
         "error"
       );
       return;
@@ -739,6 +735,7 @@ export const StudentsManagement = () => {
                 <th className="py-3.5 px-4">Especialidad</th>
                 <th className="py-3.5 px-4">Gestión</th>
                 <th className="py-3.5 px-4">Docente Acompañante</th>
+                <th className="py-3.5 px-4">Docente Guía</th>
                 <th className="py-3.5 px-4 text-center">Estado</th>
                 <th className="py-3.5 px-4 text-center">Acción</th>
               </tr>
@@ -747,7 +744,7 @@ export const StudentsManagement = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan="10"
+                    colSpan="11"
                     className="py-8 text-center text-slate-500 font-bold"
                   >
                     <Loader2
@@ -777,7 +774,7 @@ export const StudentsManagement = () => {
                         />
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-[#801B28]">
-                        {student.username}
+                        {student.codigo_estudiante || "-"}
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-900">{`${student.nombre} ${student.apellido}`}</td>
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-700">
@@ -792,10 +789,23 @@ export const StudentsManagement = () => {
                       <td className="py-3.5 px-4 font-bold text-slate-700">
                         {student.gestion_academica || "2026"}
                       </td>
-                      <td className="py-3.5 px-4 font-semibold text-emerald-800">
-                        {student.da_nombre
-                          ? `${student.da_nombre} ${student.da_apellido}`
-                          : "Sin Asignar"}
+                      <td className="py-3.5 px-4 font-semibold">
+                        {student.da_nombre && student.da_apellido ? (
+                          <span className="text-emerald-800">
+                            {`${student.da_nombre} ${student.da_apellido}`}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Sin Asignar</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold">
+                        {student.dg_nombre && student.dg_apellido ? (
+                          <span className="text-blue-800">
+                            {`${student.dg_nombre} ${student.dg_apellido}`}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Sin Asignar</span>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
@@ -850,7 +860,7 @@ export const StudentsManagement = () => {
               ) : (
                 <tr>
                   <td
-                    colSpan="10"
+                    colSpan="11"
                     className="py-8 text-center text-slate-400 font-medium"
                   >
                     No se encontraron estudiantes para la gestión académica activa.
@@ -876,16 +886,45 @@ export const StudentsManagement = () => {
             <h2 className="text-xl font-black text-slate-900 flex items-center gap-2 mb-1">
               <UserPlus className="text-[#801B28]" size={22} />
               {isEditing
-                ? "Editar Estudiante y Asignaciones"
+                ? "Editar Estudiante"
                 : "Registrar Nuevo Estudiante"}
             </h2>
             <p className="text-xs text-slate-500 mb-6">
-              Complete la información personal, académica y asignación de
-              tutores.
+              Complete la información personal y académica del estudiante.
             </p>
 
             <form onSubmit={handleSubmitStudent} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">
+                    Código Estudiante
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.codigo_estudiante}
+                    onChange={(e) =>
+                      setFormData({ ...formData, codigo_estudiante: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none font-mono"
+                    placeholder="Ej. EST-102938"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">
+                    Username (Usuario)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.username}
+                    onChange={(e) =>
+                      setFormData({ ...formData, username: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none font-mono"
+                    placeholder="Ej. maria_8492012"
+                  />
+                </div>
+
                 <div>
                   <label className="block font-extrabold text-slate-700 mb-1">
                     Nombres *
@@ -986,73 +1025,6 @@ export const StudentsManagement = () => {
                     placeholder="Ej. 78912034"
                   />
                 </div>
-
-                <div className="sm:col-span-2 rounded-2xl bg-emerald-50/60 p-4 border border-emerald-200 space-y-3">
-                  <span className="text-[11px] font-black uppercase text-emerald-900 flex items-center gap-1.5">
-                    <UserCheck size={14} /> Asignación de Docente Acompañante y
-                    Guía
-                  </span>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block font-extrabold text-slate-700 mb-1">
-                        Docente Acompañante ESFM
-                      </label>
-                      <select
-                        value={formData.docente_acompanante_id}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            docente_acompanante_id: e.target.value,
-                          })
-                        }
-                        className="w-full rounded-xl border border-slate-300 bg-white p-2 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none cursor-pointer"
-                      >
-                        <option value="">-- Sin Asignar --</option>
-                        {docentes
-                          .filter(
-                            (d) =>
-                              d.rol === "DOCENTE_ACOMPANANTE" ||
-                              d.rol.includes("ACOMPANANTE")
-                          )
-                          .map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.nombre} {d.apellido}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block font-extrabold text-slate-700 mb-1">
-                        Docente Guía / UE
-                      </label>
-                      <select
-                        value={formData.docente_guia_id}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            docente_guia_id: e.target.value,
-                          })
-                        }
-                        className="w-full rounded-xl border border-slate-300 bg-white p-2 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none cursor-pointer"
-                      >
-                        <option value="">-- Sin Asignar --</option>
-                        {docentes
-                          .filter(
-                            (d) =>
-                              d.rol === "DOCENTE_GUIA" ||
-                              d.rol.includes("GUIA")
-                          )
-                          .map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.nombre} {d.apellido}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
@@ -1075,7 +1047,7 @@ export const StudentsManagement = () => {
         </div>
       )}
 
-      {/* MODAL 2: SELECCIÓN DE FICHA Y MALLA */}
+      {/* MODAL 2: SELECCIÓN DE FICHA Y MALLA CON DOCENTES ASIGNADOS */}
       {showFichaModal && selectedStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 transition-all duration-300 ease-out animate-in fade-in">
           <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
@@ -1109,9 +1081,9 @@ export const StudentsManagement = () => {
                 </span>
               </div>
               <div>
-                <span className="font-bold text-slate-400 block">Código:</span>{" "}
+                <span className="font-bold text-slate-400 block">Código Estudiante:</span>{" "}
                 <span className="font-mono font-extrabold text-[#801B28] block">
-                  {selectedStudent.username}
+                  {selectedStudent.codigo_estudiante || "-"}
                 </span>
               </div>
               <div>
@@ -1132,6 +1104,24 @@ export const StudentsManagement = () => {
                 <span className="font-bold text-slate-400 block">Gestión:</span>{" "}
                 <span className="font-bold text-slate-800 block">
                   {selectedStudent.gestion_academica || "2026"}
+                </span>
+              </div>
+
+              {/* CAMPOS DE DOCENTES AGREGADOS EN LA FICHA */}
+              <div>
+                <span className="font-bold text-slate-400 block">Docente Acompañante:</span>{" "}
+                <span className="font-bold text-emerald-800 block">
+                  {selectedStudent.da_nombre && selectedStudent.da_apellido
+                    ? `${selectedStudent.da_nombre} ${selectedStudent.da_apellido}`
+                    : "Sin Asignar"}
+                </span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-400 block">Docente Guía:</span>{" "}
+                <span className="font-bold text-blue-800 block">
+                  {selectedStudent.dg_nombre && selectedStudent.dg_apellido
+                    ? `${selectedStudent.dg_nombre} ${selectedStudent.dg_apellido}`
+                    : "Sin Asignar"}
                 </span>
               </div>
             </div>

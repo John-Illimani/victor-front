@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from '../1año/ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { Plus, Trash2, MapPin, Users, Save, Loader2, Trash, X } from 'lucide-react';
+import { Plus, Trash2, MapPin, Users, Save, Loader2, Trash, X, UserCheck } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, ESPECIALIDADES_ESFM } from '../../../../utils/camposFichas';
 import { actaConformacion3erAnoService } from '../../../../services/fichas/3año/actaConformacion3erAnoService';
 import { especialidadService } from '../../../../services/especialidadService';
+import { studentService } from '../../../../services/studentService';
 
 export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaData, estudianteSeleccionado }) => {
   const codigoFicha = "3_ACTA_EQUIPO";
@@ -14,6 +15,10 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
+  // Lista general de estudiantes para autocompletado
+  const [todosEstudiantes, setTodosEstudiantes] = useState([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+
   // Lista de especialidades desde la base de datos
   const [listaEspecialidades, setListaEspecialidades] = useState(ESPECIALIDADES_ESFM);
 
@@ -38,25 +43,31 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     ...fichaData
   });
 
-  // Cargar especialidades dinámicamente desde el backend
+  // Cargar catálogo de especialidades y lista de estudiantes desde la API
   useEffect(() => {
-    const fetchEspecialidades = async () => {
-      try {
-        const data = await especialidadService.getEspecialidades();
-        if (Array.isArray(data) && data.length > 0) {
-          const nombres = data.map(item => typeof item === 'string' ? item : item.nombre).filter(Boolean);
-          if (nombres.length > 0) {
-            setListaEspecialidades(nombres);
+    const fetchCatalogos = async () => {
+      if (isOpen) {
+        try {
+          const [dataEspec, dataEstud] = await Promise.all([
+            especialidadService.getEspecialidades(),
+            studentService.getStudents()
+          ]);
+
+          if (Array.isArray(dataEspec) && dataEspec.length > 0) {
+            const nombres = dataEspec.map(item => typeof item === 'string' ? item : item.nombre).filter(Boolean);
+            if (nombres.length > 0) {
+              setListaEspecialidades(nombres);
+            }
           }
+
+          setTodosEstudiantes(Array.isArray(dataEstud) ? dataEstud : dataEstud?.estudiantes || []);
+        } catch (error) {
+          console.warn("No se pudieron cargar los catálogos del servidor, usando lista por defecto.", error);
         }
-      } catch (error) {
-        console.warn("No se pudieron cargar especialidades del servidor, usando lista por defecto.");
       }
     };
 
-    if (isOpen) {
-      fetchEspecialidades();
-    }
+    fetchCatalogos();
   }, [isOpen]);
 
   useEffect(() => {
@@ -71,12 +82,12 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
             const d = res.datos;
             const integrantesCargados = Array.isArray(d.integrantes) && d.integrantes.length > 0 
               ? d.integrantes 
-              : [{ apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), ci: estudianteSeleccionado.ci || '', celular: '' }];
+              : [{ apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), ci: estudianteSeleccionado.ci || '', celular: estudianteSeleccionado.telefono || '' }];
 
             setFormData(prev => ({
               ...prev,
               ...d,
-              especialidad: d.especialidad || espEstudiante,
+              especialidad: d.especialidad || prev.especialidad || espEstudiante,
               integrantes: integrantesCargados,
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
               departamento: d.departamento || DEPARTAMENTOS_BOLIVIA[0],
@@ -88,11 +99,11 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
           } else {
             const defaultState = {
               ...initialFormState,
-              especialidad: espEstudiante,
+              especialidad: formData.especialidad || espEstudiante,
               integrantes: [{ 
                 apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), 
                 ci: estudianteSeleccionado.ci || '', 
-                celular: estudianteSeleccionado.celular || '' 
+                celular: estudianteSeleccionado.telefono || estudianteSeleccionado.celular || '' 
               }]
             };
             setFormData(prev => ({ ...prev, ...defaultState }));
@@ -108,16 +119,6 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     fetchActa();
   }, [isOpen, estudianteSeleccionado]);
 
-  useEffect(() => {
-    if (estudianteSeleccionado) {
-      setFormData(prev => ({
-        ...prev,
-        especialidad: estudianteSeleccionado.especialidad || prev.especialidad,
-        ...fichaData
-      }));
-    }
-  }, [estudianteSeleccionado, fichaData]);
-
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
   };
@@ -132,6 +133,18 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     const list = [...formData.integrantes];
     list[idx][field] = value;
     handleChange('integrantes', list);
+  };
+
+  // Seleccionar estudiante de la lista de sugerencias y autocompletar Nombre, CI y Celular
+  const handleSelectEstudianteAuto = (idx, est) => {
+    const list = [...formData.integrantes];
+    list[idx] = {
+      apellidos_nombres: `${est.apellido || ''} ${est.nombre || ''}`.trim(),
+      ci: est.ci || '',
+      celular: est.telefono || est.celular || ''
+    };
+    handleChange('integrantes', list);
+    setActiveSearchIndex(null);
   };
 
   const addIntegrante = () => {
@@ -175,8 +188,8 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
       const res = await actaConformacion3erAnoService.delete(estudianteSeleccionado.id);
       const clearedData = {
         ...initialFormState,
-        especialidad: estudianteSeleccionado.especialidad || listaEspecialidades[0] || ESPECIALIDADES_ESFM[0],
-        integrantes: [{ apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), ci: '', celular: '' }]
+        especialidad: formData.especialidad || estudianteSeleccionado.especialidad || listaEspecialidades[0] || ESPECIALIDADES_ESFM[0],
+        integrantes: [{ apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), ci: estudianteSeleccionado.ci || '', celular: '' }]
       };
 
       setFormData(clearedData);
@@ -282,7 +295,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 text-[10px] mb-1">Especialidad:</label>
-                    <select value={formData.especialidad} onChange={(e) => handleChange('especialidad', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold">
+                    <select value={formData.especialidad} onChange={(e) => handleChange('especialidad', e.target.value)} className="w-full border p-2 rounded-xl bg-white font-bold cursor-pointer">
                       {listaEspecialidades.map((esp, idx) => (
                         <option key={idx} value={esp}>{esp}</option>
                       ))}
@@ -291,7 +304,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
                 </div>
               </div>
 
-              {/* INTEGRANTES */}
+              {/* INTEGRANTES DEL EQUIPO COMUNITARIO */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-center border-b pb-2">
                   <span className="font-extrabold text-slate-800 uppercase text-[11px] flex items-center gap-1.5">
@@ -303,19 +316,91 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
                 </div>
 
                 <div className="space-y-2">
-                  {formData.integrantes.map((int, idx) => (
-                    <div key={idx} className="flex flex-wrap sm:flex-nowrap gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                      <span className="font-mono font-bold w-6 text-center text-slate-700">{idx + 1}</span>
-                      <input type="text" placeholder="APELLIDOS Y NOMBRES" value={int.apellidos_nombres} onChange={(e) => handleIntegranteChange(idx, 'apellidos_nombres', e.target.value)} className="flex-1 border p-2 rounded-lg bg-white font-medium" />
-                      <input type="text" placeholder="C.I." value={int.ci} onChange={(e) => handleIntegranteChange(idx, 'ci', e.target.value)} className="w-full sm:w-32 border p-2 rounded-lg bg-white font-mono" />
-                      <input type="text" placeholder="NRO. CELULAR" value={int.celular} onChange={(e) => handleIntegranteChange(idx, 'celular', e.target.value)} className="w-full sm:w-36 border p-2 rounded-lg bg-white font-mono" />
-                      {formData.integrantes.length > 1 && (
-                        <button type="button" onClick={() => removeIntegrante(idx)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer">
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  {formData.integrantes.map((int, idx) => {
+                    const searchTerm = (int.apellidos_nombres || '').toLowerCase().trim();
+                    const filteredStudents = todosEstudiantes.filter(est => {
+                      if (!searchTerm || searchTerm.length < 2) return false;
+                      const fullName = `${est.nombre || ''} ${est.apellido || ''}`.toLowerCase();
+                      const ci = String(est.ci || '').toLowerCase();
+                      return fullName.includes(searchTerm) || ci.includes(searchTerm);
+                    });
+
+                    return (
+                      <div key={idx} className="relative flex flex-wrap sm:flex-nowrap gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                        <span className="font-mono font-bold w-6 text-center text-slate-700">{idx + 1}</span>
+
+                        {/* INPUT APELLIDOS Y NOMBRES CON AUTOCOMPLETADO */}
+                        <div className="relative flex-1 w-full">
+                          <input
+                            type="text"
+                            placeholder="APELLIDOS Y NOMBRES"
+                            value={int.apellidos_nombres}
+                            onChange={(e) => {
+                              handleIntegranteChange(idx, 'apellidos_nombres', e.target.value);
+                              setActiveSearchIndex(idx);
+                            }}
+                            onFocus={() => setActiveSearchIndex(idx)}
+                            className="w-full border p-2 rounded-lg bg-white font-medium outline-none focus:border-[#801B28]"
+                          />
+
+                          {/* MENÚ DESPLEGABLE CON COINCIDENCIAS */}
+                          {activeSearchIndex === idx && filteredStudents.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                              {filteredStudents.map((est) => (
+                                <div
+                                  key={est.id}
+                                  onClick={() => handleSelectEstudianteAuto(idx, est)}
+                                  className="p-2 hover:bg-amber-50/80 cursor-pointer transition-colors flex items-center justify-between text-xs"
+                                >
+                                  <div>
+                                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                      <UserCheck size={14} className="text-emerald-700" />
+                                      {est.apellido} {est.nombre}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-mono">
+                                      C.I.: {est.ci} | Cel: {est.telefono || est.celular || 'S/N'}
+                                    </div>
+                                  </div>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-700">
+                                    {est.ano_formacion || 'S/A'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* INPUT C.I. */}
+                        <input
+                          type="text"
+                          placeholder="C.I."
+                          value={int.ci}
+                          onChange={(e) => handleIntegranteChange(idx, 'ci', e.target.value)}
+                          className="w-full sm:w-32 border p-2 rounded-lg bg-white font-mono outline-none focus:border-[#801B28]"
+                        />
+
+                        {/* INPUT NRO. CELULAR */}
+                        <input
+                          type="text"
+                          placeholder="NRO. CELULAR"
+                          value={int.celular}
+                          onChange={(e) => handleIntegranteChange(idx, 'celular', e.target.value)}
+                          className="w-full sm:w-36 border p-2 rounded-lg bg-white font-mono outline-none focus:border-[#801B28]"
+                        />
+
+                        {formData.integrantes.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeIntegrante(idx)}
+                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="Eliminar integrante"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -324,6 +409,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
         </div>
       </ModalBase>
 
+      {/* MODAL NOTIFICACIÓN */}
       <ConfirmModal
         isOpen={modalNotif.isOpen}
         onClose={() => setModalNotif({ ...modalNotif, isOpen: false })}
@@ -332,6 +418,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
         tipo={modalNotif.tipo}
       />
 
+      {/* MODAL CONFIRMACIÓN ELIMINAR */}
       <ConfirmModal
         isOpen={modalConfirmDelete}
         onClose={() => setModalConfirmDelete(false)}

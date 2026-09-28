@@ -426,7 +426,14 @@ export const DocentesGuiaManagement = () => {
     try {
       await guideService.unassignStudent(selectedDocente.id, estudianteId);
       showFeedback('Asignación Revocada', 'Se removió la asignación del estudiante.', 'success');
-      loadEstudiantesData(selectedDocente.id);
+      
+      const prevEstudiantes = estudiantesAsignados.filter(e => e.id !== estudianteId);
+      setEstudiantesAsignados(prevEstudiantes);
+
+      if (selectedEstudianteVista && selectedEstudianteVista.id === estudianteId) {
+        setSelectedEstudianteVista(prevEstudiantes.length > 0 ? prevEstudiantes[0] : null);
+      }
+
       fetchGuides();
     } catch (err) {
       showFeedback('Error al Desasignar', err.message || 'No se pudo revocar la asignación.', 'error');
@@ -508,12 +515,36 @@ export const DocentesGuiaManagement = () => {
 
   const ComponenteExplicitoDocente = getComponenteExplicitoDocente();
 
-  // FILTRAR SOLO LOS FORMULARIOS ACTIVOS DEL DOCENTE GUÍA
+  // FILTRAR SOLO LOS FORMULARIOS ACTIVOS DEL DOCENTE GUÍA PARA EL AÑO DEL ESTUDIANTE SELECCIONADO
   const obtenerFormulariosActivosDelDocente = () => {
     if (!selectedDocente || !selectedDocente.formularios_habilitados) return [];
     
+    // Obtener y normalizar el año del estudiante activo seleccionado
+    const estAno = (selectedEstudianteVista?.ano_formacion || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
     return Object.entries(selectedDocente.formularios_habilitados)
-      .filter(([key, isEnabled]) => isEnabled === true && CATALAGO_FORMULARIOS_MAP[key])
+      .filter(([key, isEnabled]) => {
+        if (!isEnabled || !CATALAGO_FORMULARIOS_MAP[key]) return false;
+        
+        if (!selectedEstudianteVista) return true; // Muestra todos si aún no se seleccionó un estudiante
+
+        const itemAno = (CATALAGO_FORMULARIOS_MAP[key].ano || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        // Filtro estricto que solo devuelve los formularios del año del estudiante seleccionado
+        if (estAno.includes("1") || estAno.includes("primer")) return itemAno.includes("1");
+        if (estAno.includes("2") || estAno.includes("segundo")) return itemAno.includes("2");
+        if (estAno.includes("3") || estAno.includes("tercer")) return itemAno.includes("3");
+        if (estAno.includes("4") || estAno.includes("cuarto")) return itemAno.includes("4");
+        if (estAno.includes("5") || estAno.includes("quinto")) return itemAno.includes("5");
+
+        return true;
+      })
       .map(([key]) => ({
         key,
         ...CATALAGO_FORMULARIOS_MAP[key]
@@ -994,68 +1025,11 @@ export const DocentesGuiaManagement = () => {
                 }`}
               >
                 <FileText size={16} />
-                {showFormulariosPanel ? 'Ocultar Formularios' : 'Habilitar Formularios'}
+                {showFormulariosPanel ? 'Ocultar Panel Habilitación' : 'Habilitar Formularios'}
               </button>
             </div>
 
-            {/* SECCIÓN 1: FORMULARIOS HABILITADOS ACTUALMENTE PARA ESTE DOCENTE GUÍA */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                <div className="flex items-center gap-2">
-                  <FileCode2 size={18} className="text-[#801B28]" />
-                  <span className="font-extrabold text-slate-900 text-xs uppercase">
-                    Formularios Activos del Docente ({formulariosActivosDocente.length})
-                  </span>
-                </div>
-
-                {/* SELECTOR DEL ESTUDIANTE A CONSULTAR */}
-                {estudiantesAsignados.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-extrabold text-slate-500">Estudiante:</span>
-                    <select
-                      value={selectedEstudianteVista ? selectedEstudianteVista.id : ''}
-                      onChange={(e) => {
-                        const est = estudiantesAsignados.find(s => s.id === e.target.value);
-                        setSelectedEstudianteVista(est || null);
-                      }}
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none cursor-pointer"
-                    >
-                      {estudiantesAsignados.map(est => (
-                        <option key={est.id} value={est.id}>
-                          {est.apellido} {est.nombre} ({est.ano_formacion || 'S/A'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {formulariosActivosDocente.length > 0 ? (
-                <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl bg-white overflow-hidden">
-                  {formulariosActivosDocente.map((item) => (
-                    <div key={item.key} className="p-3 flex items-center justify-between text-xs hover:bg-slate-50 transition-colors">
-                      <div>
-                        <span className="font-bold text-slate-800 block">{item.nombre}</span>
-                        <span className="text-[10px] text-slate-400 font-semibold">{item.ano}</span>
-                      </div>
-                      <button
-                        onClick={() => handleOpenFichaActiva(item)}
-                        disabled={!selectedEstudianteVista}
-                        className="px-3 py-1.5 bg-[#801B28] text-white font-extrabold text-[11px] rounded-xl hover:bg-[#a32334] transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                      >
-                        Abrir / Evaluar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-slate-400 font-medium text-xs border border-dashed border-slate-200 rounded-xl">
-                  Este docente guía no tiene formularios activos asignados actualmente.
-                </div>
-              )}
-            </div>
-
-            {/* PANEL DE CONTROL DE FORMULARIOS DEL DOCENTE GUÍA */}
+            {/* PANEL DE CONTROL DE HABILITACIÓN DE FORMULARIOS (UBICADO POR ENCIMA DE LAS FICHAS) */}
             {showFormulariosPanel && (
               <div className="rounded-3xl border border-amber-200 bg-amber-50/40 p-5 mb-6 space-y-4 animate-in fade-in slide-in-from-top-2">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/80 pb-3">
@@ -1116,6 +1090,65 @@ export const DocentesGuiaManagement = () => {
                 </div>
               </div>
             )}
+
+            {/* SECCIÓN: FORMULARIOS HABILITADOS FILTRADOS POR EL AÑO DEL ESTUDIANTE SELECCIONADO */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <FileCode2 size={18} className="text-[#801B28]" />
+                  <span className="font-extrabold text-slate-900 text-xs uppercase">
+                    Formularios Activos del Docente ({formulariosActivosDocente.length})
+                  </span>
+                </div>
+
+                {/* SELECTOR DEL ESTUDIANTE A CONSULTAR */}
+                {estudiantesAsignados.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-extrabold text-slate-500">Estudiante:</span>
+                    <select
+                      value={selectedEstudianteVista ? selectedEstudianteVista.id : ''}
+                      onChange={(e) => {
+                        const est = estudiantesAsignados.find(s => s.id === e.target.value);
+                        setSelectedEstudianteVista(est || null);
+                      }}
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none cursor-pointer"
+                    >
+                      {estudiantesAsignados.map(est => (
+                        <option key={est.id} value={est.id}>
+                          {est.apellido} {est.nombre} ({est.ano_formacion || 'S/A'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {formulariosActivosDocente.length > 0 ? (
+                <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl bg-white overflow-hidden">
+                  {formulariosActivosDocente.map((item) => (
+                    <div key={item.key} className="p-3 flex items-center justify-between text-xs hover:bg-slate-50 transition-colors">
+                      <div>
+                        <span className="font-bold text-slate-800 block">{item.nombre}</span>
+                        <span className="text-[10px] text-[#8C731A] font-bold">{item.ano}</span>
+                      </div>
+                      <button
+                        onClick={() => handleOpenFichaActiva(item)}
+                        disabled={!selectedEstudianteVista}
+                        className="px-3 py-1.5 bg-[#801B28] text-white font-extrabold text-[11px] rounded-xl hover:bg-[#a32334] transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                      >
+                        Abrir / Evaluar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-slate-400 font-medium text-xs border border-dashed border-slate-200 rounded-xl">
+                  {selectedEstudianteVista 
+                    ? `Este docente guía no tiene formularios activos para el ${selectedEstudianteVista.ano_formacion || 'año actual'}.`
+                    : "Este docente guía no tiene formularios activos asignados actualmente."}
+                </div>
+              )}
+            </div>
 
             {/* BUSCADOR EN TIEMPO REAL AUTOCOMPLETE DE ESTUDIANTES */}
             <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 mb-6 space-y-3">

@@ -9,9 +9,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
-  ShieldCheck
 } from "lucide-react";
-import { actaService } from "../../../services/actaService";
+import { studentService } from "../../../services/studentService";
 import { BlockchainResultModal } from "../../../components/modals/BlockchainResultModal";
 import { blockchainService } from "../../../services/blockchainService";
 import { imprimirCentralizador1erAno } from "../../../utils/fichas/1año/centralizador1AnoPdfGenerator";
@@ -64,10 +63,19 @@ export const ActaAnoView = ({ gestion, ano }) => {
   const fetchActas = async () => {
     setLoading(true);
     try {
-      const data = await actaService.getActasByGestionAno(gestion, ano);
-      setActas(data);
+      const data = await studentService.getStudents();
+      const targetAnoStr = (ano || "").toString().toUpperCase();
+      const filtered = (data || []).filter((est) => {
+        const estGestion = (est.gestion_academica || "").toString();
+        const estAno = (est.ano_formacion || "").toString().toUpperCase();
+        
+        const matchesGestion = !gestion || estGestion === gestion.toString();
+        const matchesAno = !ano || estAno.includes(targetAnoStr);
+        return matchesGestion && matchesAno;
+      });
+      setActas(filtered);
     } catch (error) {
-      console.error(error);
+      console.error("Error al obtener estudiantes:", error);
     } finally {
       setLoading(false);
     }
@@ -80,9 +88,11 @@ export const ActaAnoView = ({ gestion, ano }) => {
   const filteredActas = actas.filter((acta) => {
     const search = searchTerm.toLowerCase();
     const fullName = `${acta.nombre || ""} ${acta.apellido || ""}`.toLowerCase();
+    const codigoEstudiante = (acta.codigo_estudiante || "").toLowerCase();
+
     return (
       fullName.includes(search) ||
-      (acta.codigo_estudiante && acta.codigo_estudiante.toLowerCase().includes(search)) ||
+      codigoEstudiante.includes(search) ||
       (acta.ci && acta.ci.includes(search))
     );
   });
@@ -97,7 +107,9 @@ export const ActaAnoView = ({ gestion, ano }) => {
 
     setGeneratingPdf(true);
     const a = (selectedActa.ano_formacion || ano || "").toString().toUpperCase();
-    const id = selectedActa.estudiante_id;
+    
+    // Extracción estricta únicamente del ID del estudiante
+    const id = selectedActa.id;
 
     const es1erAno = a.includes("1") || a.includes("PRIMER");
     const es2doAno = a.includes("2") || a.includes("SEGUNDO");
@@ -105,7 +117,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
     const es4toAno = a.includes("4") || a.includes("CUARTO");
     const es5toAno = a.includes("5") || a.includes("QUINTO") || (!es1erAno && !es2doAno && !es3erAno && !es4toAno);
 
-    // 1. CASO ESPECIAL: Centralizadores de 1ro, 2do, 3ro, 4to y 5to Año con Registro Blockchain
+    // 1. CASO ESPECIAL: Centralizadores con Registro Blockchain
     if ((es1erAno || es2doAno || es3erAno || es4toAno || es5toAno) && ficha.codigo === "CENTRALIZADOR") {
       try {
         let resCert;
@@ -147,7 +159,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
       return;
     }
 
-    // 2. CASO TRADICIONAL: Fichas normales
+    // 2. CASO TRADICIONAL: Fichas normales comparando únicamente id de estudiante
     let res = { success: false, message: "" };
     if (es1erAno) {
       res = await ejecutarImpresion1erAno(ficha.codigo, id);
@@ -240,32 +252,48 @@ export const ActaAnoView = ({ gestion, ano }) => {
                 <th className="py-3.5 px-4">Estudiante / C.I.</th>
                 <th className="py-3.5 px-4">Especialidad</th>
                 <th className="py-3.5 px-4">Docente Acompañante</th>
+                <th className="py-3.5 px-4">Docente Guía</th>
                 <th className="py-3.5 px-4 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="py-8 text-center text-slate-500 font-bold">
+                  <td colSpan="6" className="py-8 text-center text-slate-500 font-bold">
                     <Loader2 className="animate-spin inline-block mr-2 text-[#801B28]" size={20} />
                     Cargando estudiantes de la gestión {gestion}...
                   </td>
                 </tr>
               ) : filteredActas.length > 0 ? (
                 filteredActas.map((acta) => (
-                  <tr key={acta.estudiante_id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={acta.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3.5 px-4 font-mono font-bold text-[#801B28]">
-                      {acta.codigo_estudiante}
+                      {acta.codigo_estudiante || "-"}
                     </td>
                     <td className="py-3.5 px-4">
-                      <span className="block font-bold text-slate-900">{`${acta.nombre} ${acta.apellido}`}</span>
+                      <span className="block font-bold text-slate-900">{`${acta.nombre || ""} ${acta.apellido || ""}`}</span>
                       <span className="font-mono text-[11px] text-slate-400">C.I. {acta.ci}</span>
                     </td>
                     <td className="py-3.5 px-4 font-semibold text-slate-800">
                       {acta.especialidad || "Educación Primaria"}
                     </td>
-                    <td className="py-3.5 px-4 font-medium text-slate-800">
-                      {acta.da_nombre ? `${acta.da_nombre} ${acta.da_apellido}` : "Sin Asignar"}
+                    <td className="py-3.5 px-4 font-semibold">
+                      {acta.da_nombre && acta.da_apellido ? (
+                        <span className="text-emerald-800">
+                          {`${acta.da_nombre} ${acta.da_apellido}`}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Sin Asignar</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 font-semibold">
+                      {acta.dg_nombre && acta.dg_apellido ? (
+                        <span className="text-blue-800">
+                          {`${acta.dg_nombre} ${acta.dg_apellido}`}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Sin Asignar</span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <button
@@ -280,7 +308,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="py-8 text-center text-slate-400 font-medium">
+                  <td colSpan="6" className="py-8 text-center text-slate-400 font-medium">
                     No existen actas registradas para la Gestión {gestion} ({ano}º Año).
                   </td>
                 </tr>
@@ -326,7 +354,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
               <div>
                 <span className="font-bold text-[#801B28] block">Código:</span>
                 <span className="font-mono font-extrabold text-[#801B28] block">
-                  {selectedActa.codigo_estudiante}
+                  {selectedActa.codigo_estudiante || "-"}
                 </span>
               </div>
               <div>
@@ -335,9 +363,23 @@ export const ActaAnoView = ({ gestion, ano }) => {
                   {selectedActa.especialidad || "Educación Primaria"}
                 </span>
               </div>
+              <div>
+                <span className="font-bold text-[#801B28] block">Docente Acompañante:</span>
+                <span className="font-semibold text-emerald-800 block">
+                  {selectedActa.da_nombre && selectedActa.da_apellido 
+                    ? `${selectedActa.da_nombre} ${selectedActa.da_apellido}` 
+                    : "Sin Asignar"}
+                </span>
+              </div>
+              <div>
+                <span className="font-bold text-[#801B28] block">Docente Guía:</span>
+                <span className="font-semibold text-blue-800 block">
+                  {selectedActa.dg_nombre && selectedActa.dg_apellido 
+                    ? `${selectedActa.dg_nombre} ${selectedActa.dg_apellido}` 
+                    : "Sin Asignar"}
+                </span>
+              </div>
             </div>
-
-           
 
             <h3 className="text-xs font-black text-slate-900 mb-3 uppercase flex items-center gap-2">
               <FileText className="text-[#801B28]" size={16} /> ACTAS Y FICHAS DISPONIBLES

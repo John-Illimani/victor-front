@@ -170,7 +170,7 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
               const centralData = await fetchCentralizadorByAno(anoFilter, est.id);
               return {
                 id: est.id,
-                codigoEstudiante: est.codigo_estudiante || est.ci || 'S/C',
+                codigoEstudiante: est.codigo_estudiante || '-',
                 estudiante: `${est.nombre || ''} ${est.apellido || ''}`.trim(),
                 ci: est.ci,
                 especialidad: est.especialidad || 'General',
@@ -215,7 +215,7 @@ export const ReporteBaseView = ({ tipo, titulo, descripcion }) => {
         else if (tipo === 'gestion') {
           const rowsPersonal = filteredStudents.map(est => ({
             id: est.id,
-            codigoEstudiante: est.codigo_estudiante || est.ci || 'S/C',
+            codigoEstudiante: est.codigo_estudiante || '-',
             estudiante: `${est.nombre || ''} ${est.apellido || ''}`.trim(),
             ci: est.ci,
             especialidad: est.especialidad || 'General',

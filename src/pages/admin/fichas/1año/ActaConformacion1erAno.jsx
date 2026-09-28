@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from './ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { Plus, Trash2, MapPin, Users, Save, Loader2, Trash, X } from 'lucide-react';
+import { Plus, Trash2, MapPin, Users, Save, Loader2, Trash, X, UserCheck } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO } from '../../../../utils/camposFichas';
 import { actaConformacionService } from '../../../../services/fichas/1año/actaConformacionService';
 import { especialidadService } from '../../../../services/especialidadService';
+import { studentService } from '../../../../services/studentService';
 
 export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaData, estudianteSeleccionado }) => {
   const codigoFicha = "1_ACTA_EQUIPO";
@@ -14,6 +15,10 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Lista general de estudiantes para autocompletado
+  const [todosEstudiantes, setTodosEstudiantes] = useState([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
+
   // Estado para la lista dinámica de especialidades traídas de la API
   const [especialidadesApi, setEspecialidadesApi] = useState([]);
   const [loadingEspecialidades, setLoadingEspecialidades] = useState(false);
@@ -22,7 +27,7 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
   const [modalNotif, setModalNotif] = useState({ isOpen: false, titulo: '', mensaje: '', tipo: 'info' });
   const [modalConfirmDelete, setModalConfirmDelete] = useState(false);
 
-  // Valores iniciales por defecto para limpiar o resetear el formulario
+  // Valores iniciales por defecto
   const initialFormState = {
     lugar_ciudad: 'El Alto',
     departamento: DEPARTAMENTOS_BOLIVIA[0],
@@ -36,9 +41,7 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     integrantes: [
       {
         apellidos_nombres: estudianteSeleccionado ? `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim() : '',
-        especialidad: estudianteSeleccionado?.especialidad || '',
-        ci: estudianteSeleccionado?.ci || '',
-        nro_celular: estudianteSeleccionado?.telefono || ''
+        ci: estudianteSeleccionado?.ci || ''
       }
     ]
   };
@@ -48,31 +51,38 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     ...fichaData
   });
 
-  // 1. Cargar la lista de especialidades desde la API al abrir el modal
+  // 1. Cargar catálogo de especialidades y lista completa de estudiantes
   useEffect(() => {
-    const fetchEspecialidades = async () => {
+    const fetchCatalogos = async () => {
       if (isOpen) {
         setLoadingEspecialidades(true);
         try {
-          const data = await especialidadService.getEspecialidades();
-          setEspecialidadesApi(data);
+          const [dataEspec, dataEstud] = await Promise.all([
+            especialidadService.getEspecialidades(),
+            studentService.getStudents()
+          ]);
 
-          if (!formData.especialidad && data.length > 0) {
-            const inicial = estudianteSeleccionado?.especialidad || data[0].nombre;
-            setFormData(prev => ({ ...prev, especialidad: inicial }));
+          setEspecialidadesApi(dataEspec);
+          setTodosEstudiantes(Array.isArray(dataEstud) ? dataEstud : dataEstud?.estudiantes || []);
+
+          if (!formData.especialidad && dataEspec.length > 0) {
+            setFormData(prev => ({ 
+              ...prev, 
+              especialidad: prev.especialidad || estudianteSeleccionado?.especialidad || dataEspec[0].nombre 
+            }));
           }
         } catch (error) {
-          console.error("Error al cargar especialidades de la API:", error);
+          console.error("Error al cargar catálogos iniciales:", error);
         } finally {
           setLoadingEspecialidades(false);
         }
       }
     };
 
-    fetchEspecialidades();
+    fetchCatalogos();
   }, [isOpen]);
 
-  // 2. Cargar datos del acta desde la API cuando abre el modal
+  // 2. Cargar datos del acta desde la API respetando los valores propios de la ficha
   useEffect(() => {
     const fetchActa = async () => {
       if (isOpen && estudianteSeleccionado?.id) {
@@ -84,19 +94,17 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
               ...prev,
               ...res.datos,
               gestion: String(res.datos.gestion || '2026').slice(0, 4),
-              especialidad: res.datos.especialidad || estudianteSeleccionado.especialidad || prev.especialidad
+              especialidad: res.datos.especialidad || prev.especialidad || estudianteSeleccionado.especialidad || ''
             }));
             if (setFichaData) setFichaData(res.datos);
           } else {
             const defaultState = {
               ...initialFormState,
-              especialidad: estudianteSeleccionado.especialidad || prev.especialidad,
+              especialidad: formData.especialidad || estudianteSeleccionado.especialidad || '',
               integrantes: [
                 {
                   apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-                  especialidad: estudianteSeleccionado.especialidad || '',
-                  ci: estudianteSeleccionado.ci || '',
-                  nro_celular: estudianteSeleccionado.telefono || ''
+                  ci: estudianteSeleccionado.ci || ''
                 }
               ]
             };
@@ -123,7 +131,6 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     if (setFichaData) setFichaData(updated);
   };
 
-  // Validación para restringir la gestión a máximo 4 dígitos
   const handleGestionChange = (e) => {
     const valor = e.target.value.replace(/\D/g, '').slice(0, 4);
     handleChange('gestion', valor);
@@ -135,15 +142,25 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     handleChange('integrantes', list);
   };
 
+  // Seleccionar estudiante de la lista desplegable de autocompletado (solo nombres y C.I.)
+  const handleSelectEstudianteAuto = (idx, est) => {
+    const list = [...formData.integrantes];
+    list[idx] = {
+      apellidos_nombres: `${est.apellido || ''} ${est.nombre || ''}`.trim(),
+      ci: est.ci || ''
+    };
+    handleChange('integrantes', list);
+    setActiveSearchIndex(null);
+  };
+
   const addIntegrante = () => {
-    handleChange('integrantes', [...formData.integrantes, { apellidos_nombres: '', especialidad: '', ci: '', nro_celular: '' }]);
+    handleChange('integrantes', [...formData.integrantes, { apellidos_nombres: '', ci: '' }]);
   };
 
   const removeIntegrante = (idx) => {
     handleChange('integrantes', formData.integrantes.filter((_, i) => i !== idx));
   };
 
-  // Guardar o Actualizar
   const handleSave = async () => {
     if (!estudianteSeleccionado?.id) {
       mostrarNotificacion("Estudiante No Seleccionado", "Debe seleccionar un estudiante antes de guardar el acta.", "error");
@@ -166,7 +183,6 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     }
   };
 
-  // Confirmar Eliminación
   const ejecutarEliminacion = async () => {
     if (!estudianteSeleccionado?.id) return;
 
@@ -174,16 +190,13 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     try {
       const res = await actaConformacionService.delete(estudianteSeleccionado.id);
       
-      // Limpiar formulario localmente
       const clearedData = {
         ...initialFormState,
-        especialidad: estudianteSeleccionado?.especialidad || (especialidadesApi[0]?.nombre || ''),
+        especialidad: formData.especialidad || estudianteSeleccionado?.especialidad || (especialidadesApi[0]?.nombre || ''),
         integrantes: [
           {
             apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-            especialidad: estudianteSeleccionado.especialidad || '',
-            ci: estudianteSeleccionado.ci || '',
-            nro_celular: estudianteSeleccionado.telefono || ''
+            ci: estudianteSeleccionado.ci || ''
           }
         ]
       };
@@ -201,7 +214,6 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
     }
   };
 
-  // Renderizado del pie del modal con botones de Guardar y Cerrar
   const footerButtons = (
     <div className="flex justify-end gap-2 w-full">
       <button
@@ -242,7 +254,6 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
           ) : (
             <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-4">
               
-              {/* CABECERA SUPERIOR SOLO CON TÍTULO Y BOTÓN DE ELIMINAR */}
               <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-2">
                 <h4 className="font-extrabold text-[#801B28] uppercase text-sm">
                   {config?.titulo || "ACTA DE CONFORMACIÓN DE EQUIPO COMUNITARIO"}
@@ -342,7 +353,7 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
                       value={formData.especialidad}
                       onChange={(e) => handleChange('especialidad', e.target.value)}
                       disabled={loadingEspecialidades}
-                      className="w-full border border-slate-200 p-2 rounded-xl bg-white font-bold text-slate-800 disabled:opacity-50"
+                      className="w-full border border-slate-200 p-2 rounded-xl bg-white font-bold text-slate-800 disabled:opacity-50 cursor-pointer"
                     >
                       {loadingEspecialidades ? (
                         <option value="">Cargando especialidades...</option>
@@ -358,7 +369,7 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
                 </div>
               </div>
 
-              {/* INTEGRANTES DEL EQUIPO COMUNITARIO */}
+              {/* INTEGRANTES DEL EQUIPO COMUNITARIO (NOMBRES + C.I.) */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="font-extrabold text-slate-800 uppercase text-[11px] flex items-center gap-1.5">
@@ -374,36 +385,82 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
                 </div>
 
                 <div className="space-y-2">
-                  {formData.integrantes?.map((int, idx) => (
-                    <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
-                      <span className="font-mono font-bold w-6 text-center">{idx + 1}</span>
-                      <input
-                        type="text"
-                        placeholder="APELLIDOS Y NOMBRES"
-                        value={int.apellidos_nombres || ''}
-                        onChange={(e) => handleIntegranteChange(idx, 'apellidos_nombres', e.target.value)}
-                        className="flex-1 border p-1.5 rounded-lg bg-white font-medium"
-                      />
-                      
-                      <input
-                        type="text"
-                        placeholder="C.I."
-                        value={int.ci || ''}
-                        onChange={(e) => handleIntegranteChange(idx, 'ci', e.target.value)}
-                        className="w-24 border p-1.5 rounded-lg bg-white font-mono"
-                      />
-                     
-                      {formData.integrantes.length > 1 && (
-                        <button 
-                          type="button" 
-                          onClick={() => removeIntegrante(idx)} 
-                          className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  {formData.integrantes?.map((int, idx) => {
+                    const searchTerm = (int.apellidos_nombres || '').toLowerCase().trim();
+                    const filteredStudents = todosEstudiantes.filter(est => {
+                      if (!searchTerm || searchTerm.length < 2) return false;
+                      const fullName = `${est.nombre || ''} ${est.apellido || ''}`.toLowerCase();
+                      const ci = String(est.ci || '').toLowerCase();
+                      return fullName.includes(searchTerm) || ci.includes(searchTerm);
+                    });
+
+                    return (
+                      <div key={idx} className="relative flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                        <span className="font-mono font-bold w-6 text-center text-slate-500">{idx + 1}</span>
+
+                        {/* INPUT NOMBRE Y APELLIDOS CON AUTOCOMPLETADO */}
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            placeholder="APELLIDOS Y NOMBRES"
+                            value={int.apellidos_nombres || ''}
+                            onChange={(e) => {
+                              handleIntegranteChange(idx, 'apellidos_nombres', e.target.value);
+                              setActiveSearchIndex(idx);
+                            }}
+                            onFocus={() => setActiveSearchIndex(idx)}
+                            className="w-full border border-slate-300 p-1.5 rounded-lg bg-white font-medium focus:border-[#8C731A] focus:outline-none"
+                          />
+
+                          {/* MENÚ DESPLEGABLE AUTOCOMPLETADO */}
+                          {activeSearchIndex === idx && filteredStudents.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                              {filteredStudents.map((est) => (
+                                <div
+                                  key={est.id}
+                                  onClick={() => handleSelectEstudianteAuto(idx, est)}
+                                  className="p-2 hover:bg-amber-50/80 cursor-pointer transition-colors flex items-center justify-between text-xs"
+                                >
+                                  <div>
+                                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                      <UserCheck size={14} className="text-emerald-700" />
+                                      {est.apellido} {est.nombre}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-mono">
+                                      C.I.: {est.ci}
+                                    </div>
+                                  </div>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-700">
+                                    {est.ano_formacion || 'S/A'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* INPUT C.I. */}
+                        <input
+                          type="text"
+                          placeholder="C.I."
+                          value={int.ci || ''}
+                          onChange={(e) => handleIntegranteChange(idx, 'ci', e.target.value)}
+                          className="w-28 border border-slate-300 p-1.5 rounded-lg bg-white font-mono"
+                        />
+
+                        {formData.integrantes.length > 1 && (
+                          <button 
+                            type="button" 
+                            onClick={() => removeIntegrante(idx)} 
+                            className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg cursor-pointer shrink-0"
+                            title="Remover Integrante"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -412,7 +469,6 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
         </div>
       </ModalBase>
 
-      {/* MODAL DE NOTIFICACIÓN DE SISTEMA */}
       <ConfirmModal
         isOpen={modalNotif.isOpen}
         onClose={() => setModalNotif({ ...modalNotif, isOpen: false })}
@@ -421,7 +477,6 @@ export const ActaConformacion1erAno = ({ isOpen, onClose, fichaData, setFichaDat
         tipo={modalNotif.tipo}
       />
 
-      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
       <ConfirmModal
         isOpen={modalConfirmDelete}
         onClose={() => setModalConfirmDelete(false)}

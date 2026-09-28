@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ModalBase } from '../1año/ModalBase';
 import { ConfirmModal } from '../../../../components/modals/ConfirmModal';
-import { Plus, Trash2, MapPin, Users, Save, Loader2, Trash, X } from 'lucide-react';
+import { Plus, Trash2, MapPin, Users, Save, Loader2, Trash, X, UserCheck } from 'lucide-react';
 import { CONFIGURACION_FICHAS, DEPARTAMENTOS_BOLIVIA, MESES_ANIO, ESPECIALIDADES_ESFM } from '../../../../utils/camposFichas';
 import { actaConformacion2doAnoService } from '../../../../services/fichas/2año/actaConformacion2doAnoService';
 import { especialidadService } from '../../../../services/especialidadService';
+import { studentService } from '../../../../services/studentService';
 
 export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaData, estudianteSeleccionado }) => {
   const codigoFicha = "2_ACTA_EQUIPO";
@@ -13,6 +14,10 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Lista general de estudiantes para autocompletado
+  const [todosEstudiantes, setTodosEstudiantes] = useState([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(null);
 
   const [especialidadesList, setEspecialidadesList] = useState(ESPECIALIDADES_ESFM);
 
@@ -37,26 +42,32 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     ...fichaData
   });
 
-  // Cargar lista dinámica de especialidades desde la API
+  // Cargar especialidades y lista general de estudiantes
   useEffect(() => {
-    const fetchEspecialidades = async () => {
-      try {
-        const res = await especialidadService.getEspecialidades();
-        if (Array.isArray(res) && res.length > 0) {
-          const nombres = res.map(e => e.nombre || e.nombre_especialidad || e.especialidad).filter(Boolean);
-          if (nombres.length > 0) setEspecialidadesList(nombres);
-        } else if (res?.datos && Array.isArray(res.datos)) {
-          const nombres = res.datos.map(e => e.nombre || e.nombre_especialidad || e.especialidad).filter(Boolean);
-          if (nombres.length > 0) setEspecialidadesList(nombres);
+    const fetchCatalogos = async () => {
+      if (isOpen) {
+        try {
+          const [resEspec, resEstud] = await Promise.all([
+            especialidadService.getEspecialidades(),
+            studentService.getStudents()
+          ]);
+
+          if (Array.isArray(resEspec) && resEspec.length > 0) {
+            const nombres = resEspec.map(e => e.nombre || e.nombre_especialidad || e.especialidad).filter(Boolean);
+            if (nombres.length > 0) setEspecialidadesList(nombres);
+          } else if (resEspec?.datos && Array.isArray(resEspec.datos)) {
+            const nombres = resEspec.datos.map(e => e.nombre || e.nombre_especialidad || e.especialidad).filter(Boolean);
+            if (nombres.length > 0) setEspecialidadesList(nombres);
+          }
+
+          setTodosEstudiantes(Array.isArray(resEstud) ? resEstud : resEstud?.estudiantes || []);
+        } catch (error) {
+          console.warn("Error al cargar catálogos en 2do Año.", error);
         }
-      } catch (error) {
-        console.warn("Respaldo local para especialidades activado.", error);
       }
     };
 
-    if (isOpen) {
-      fetchEspecialidades();
-    }
+    fetchCatalogos();
   }, [isOpen]);
 
   // Cargar datos del acta desde el backend
@@ -74,7 +85,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
             setFormData(prev => ({
               ...prev,
               ...d,
-              especialidad: d.especialidad || espEstudiante,
+              especialidad: d.especialidad || prev.especialidad || espEstudiante,
               gestion: d.gestion || gestionEstudiante,
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
               departamento: d.departamento || DEPARTAMENTOS_BOLIVIA[0],
@@ -86,11 +97,11 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
           } else {
             const defaultState = {
               ...initialFormState,
-              especialidad: espEstudiante,
+              especialidad: formData.especialidad || espEstudiante,
               gestion: gestionEstudiante,
               integrantes: [{
                 apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-                especialidad: espEstudiante,
+                especialidad: estudianteSeleccionado.especialidad || espEstudiante,
                 ci: estudianteSeleccionado.ci || ''
               }]
             };
@@ -107,17 +118,6 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     fetchActa();
   }, [isOpen, estudianteSeleccionado]);
 
-  useEffect(() => {
-    if (estudianteSeleccionado) {
-      setFormData(prev => ({
-        ...prev,
-        especialidad: estudianteSeleccionado.especialidad || prev.especialidad,
-        gestion: estudianteSeleccionado.gestion || prev.gestion,
-        ...fichaData
-      }));
-    }
-  }, [estudianteSeleccionado, fichaData]);
-
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
   };
@@ -132,6 +132,18 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     const list = [...formData.integrantes];
     list[idx][field] = value;
     handleChange('integrantes', list);
+  };
+
+  // Seleccionar estudiante de la lista desplegable asignando su Nombre, Especialidad y CI
+  const handleSelectEstudianteAuto = (idx, est) => {
+    const list = [...formData.integrantes];
+    list[idx] = {
+      apellidos_nombres: `${est.apellido || ''} ${est.nombre || ''}`.trim(),
+      especialidad: est.especialidad || list[idx].especialidad || especialidadesList[0] || '',
+      ci: est.ci || ''
+    };
+    handleChange('integrantes', list);
+    setActiveSearchIndex(null);
   };
 
   const addIntegrante = () => {
@@ -170,7 +182,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
       const res = await actaConformacion2doAnoService.delete(estudianteSeleccionado.id);
       const clearedData = {
         ...initialFormState,
-        especialidad: estudianteSeleccionado.especialidad || initialFormState.especialidad,
+        especialidad: formData.especialidad || estudianteSeleccionado.especialidad || initialFormState.especialidad,
         gestion: estudianteSeleccionado.gestion || initialFormState.gestion,
         integrantes: [{ apellidos_nombres: '', especialidad: estudianteSeleccionado.especialidad || initialFormState.especialidad, ci: '' }]
       };
@@ -285,7 +297,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
                 </div>
               </div>
 
-              {/* INTEGRANTES DEL EQUIPO COMUNITARIO */}
+              {/* INTEGRANTES DEL EQUIPO COMUNITARIO CON AUTOCOMPLETADO */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="font-extrabold text-slate-800 uppercase text-[11px] flex items-center gap-1.5">
@@ -297,45 +309,94 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
                 </div>
 
                 <div className="space-y-2">
-                  {formData.integrantes.map((int, idx) => (
-                    <div key={idx} className="flex gap-2 items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
-                      <span className="font-mono font-bold w-6 text-center text-xs">{idx + 1}</span>
-                      <input
-                        type="text"
-                        placeholder="APELLIDOS Y NOMBRES"
-                        value={int.apellidos_nombres}
-                        onChange={(e) => handleIntegranteChange(idx, 'apellidos_nombres', e.target.value)}
-                        className="flex-1 border p-1.5 rounded-lg bg-white font-medium text-xs outline-none focus:border-[#801B28]"
-                      />
-                      <select
-                        value={int.especialidad}
-                        onChange={(e) => handleIntegranteChange(idx, 'especialidad', e.target.value)}
-                        className="flex-1 border p-1.5 rounded-lg bg-white font-bold text-xs text-slate-800 cursor-pointer outline-none focus:border-[#801B28]"
-                      >
-                        <option value="">SELECCIONAR ESPECIALIDAD</option>
-                        {especialidadesList.map(esp => (
-                          <option key={esp} value={esp}>{esp}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="C.I."
-                        value={int.ci}
-                        onChange={(e) => handleIntegranteChange(idx, 'ci', e.target.value)}
-                        className="w-28 border p-1.5 rounded-lg bg-white font-mono text-xs outline-none focus:border-[#801B28]"
-                      />
-                      {formData.integrantes.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeIntegrante(idx)}
-                          className="p-1.5 text-rose-600 hover:text-rose-800 cursor-pointer transition-colors"
-                          title="Eliminar integrante"
+                  {formData.integrantes.map((int, idx) => {
+                    const searchTerm = (int.apellidos_nombres || '').toLowerCase().trim();
+                    const filteredStudents = todosEstudiantes.filter(est => {
+                      if (!searchTerm || searchTerm.length < 2) return false;
+                      const fullName = `${est.nombre || ''} ${est.apellido || ''}`.toLowerCase();
+                      const ci = String(est.ci || '').toLowerCase();
+                      return fullName.includes(searchTerm) || ci.includes(searchTerm);
+                    });
+
+                    return (
+                      <div key={idx} className="relative flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                        <span className="font-mono font-bold w-6 text-center text-xs">{idx + 1}</span>
+
+                        {/* INPUT APELLIDOS Y NOMBRES CON BÚSQUEDA Y DESPLEGABLE */}
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            placeholder="APELLIDOS Y NOMBRES"
+                            value={int.apellidos_nombres}
+                            onChange={(e) => {
+                              handleIntegranteChange(idx, 'apellidos_nombres', e.target.value);
+                              setActiveSearchIndex(idx);
+                            }}
+                            onFocus={() => setActiveSearchIndex(idx)}
+                            className="w-full border p-1.5 rounded-lg bg-white font-medium text-xs outline-none focus:border-[#801B28]"
+                          />
+
+                          {/* MENÚ DESPLEGABLE AUTOCOMPLETADO */}
+                          {activeSearchIndex === idx && filteredStudents.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                              {filteredStudents.map((est) => (
+                                <div
+                                  key={est.id}
+                                  onClick={() => handleSelectEstudianteAuto(idx, est)}
+                                  className="p-2 hover:bg-amber-50/80 cursor-pointer transition-colors flex items-center justify-between text-xs"
+                                >
+                                  <div>
+                                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                      <UserCheck size={14} className="text-emerald-700" />
+                                      {est.apellido} {est.nombre}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-mono">
+                                      C.I.: {est.ci} | Esp: {est.especialidad || 'General'}
+                                    </div>
+                                  </div>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-700">
+                                    {est.ano_formacion || 'S/A'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SELECTOR ESPECIALIDAD */}
+                        <select
+                          value={int.especialidad}
+                          onChange={(e) => handleIntegranteChange(idx, 'especialidad', e.target.value)}
+                          className="flex-1 border p-1.5 rounded-lg bg-white font-bold text-xs text-slate-800 cursor-pointer outline-none focus:border-[#801B28]"
                         >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                          <option value="">SELECCIONAR ESPECIALIDAD</option>
+                          {especialidadesList.map(esp => (
+                            <option key={esp} value={esp}>{esp}</option>
+                          ))}
+                        </select>
+
+                        {/* INPUT C.I. */}
+                        <input
+                          type="text"
+                          placeholder="C.I."
+                          value={int.ci}
+                          onChange={(e) => handleIntegranteChange(idx, 'ci', e.target.value)}
+                          className="w-28 border p-1.5 rounded-lg bg-white font-mono text-xs outline-none focus:border-[#801B28]"
+                        />
+
+                        {formData.integrantes.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeIntegrante(idx)}
+                            className="p-1.5 text-rose-600 hover:text-rose-800 cursor-pointer transition-colors"
+                            title="Eliminar integrante"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
