@@ -800,7 +800,7 @@ export const StudentsManagement = () => {
                       </td>
                       <td className="py-3.5 px-4 font-semibold">
                         {student.dg_nombre && student.dg_apellido ? (
-                          <span className="text-blue-800">
+                          <span className="text-emerald-800">
                             {`${student.dg_nombre} ${student.dg_apellido}`}
                           </span>
                         ) : (

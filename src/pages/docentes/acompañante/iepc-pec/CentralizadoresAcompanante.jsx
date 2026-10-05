@@ -7,12 +7,22 @@ import {
   UserCheck,
   Filter,
   Eye, 
+  Printer,
   X 
 } from 'lucide-react';
 
 import { teacherService } from '../../../../services/teacherService';
 import { studentService } from '../../../../services/studentService';
 import { userService } from '../../../../services/userService';
+import { blockchainService } from '../../../../services/blockchainService';
+import { BlockchainResultModal } from '../../../../components/modals/BlockchainResultModal';
+
+// IMPORTACIÓN DE MÉTODOS DE IMPRESIÓN DE CENTRALIZADORES POR AÑO
+import { imprimirCentralizador1erAno } from '../../../../utils/fichas/1año/centralizador1AnoPdfGenerator';
+import { imprimirCentralizador2doAno } from '../../../../utils/fichas/2año/centralizador2AnoPdfGenerator';
+import { imprimirCentralizador3erAno } from '../../../../utils/fichas/3año/centralizador3AnoPdfGenerator';
+import { imprimirCentralizador4toAno } from '../../../../utils/fichas/4año/centralizador4AnoPdfGenerator';
+import { imprimirCentralizador5toAno } from '../../../../utils/fichas/5año/centralizador5AnoPdfGenerator';
 
 // IMPORTACIÓN DE COMPONENTES CENTRALIZADORES EXACTOS
 import { Centralizador1erAno } from '../../../admin/fichas/1año/Centralizador1erAno';
@@ -65,6 +75,15 @@ export const CentralizadoresAcompanante = () => {
   const [activeAnoCentralizador, setActiveAnoCentralizador] = useState(null);
   const [fichaData, setFichaData] = useState({});
   const [actionLoading, setActionLoading] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  // Modal Suave de Respuesta Blockchain
+  const [modalBlockchain, setModalBlockchain] = useState({
+    show: false,
+    data: null,
+    estudianteId: null,
+    numAno: null
+  });
 
   useEffect(() => {
     const fetchAssigned = async () => {
@@ -163,6 +182,83 @@ export const CentralizadoresAcompanante = () => {
       setFichaData({});
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // IMPRESIÓN CON CERTIFICACIÓN BLOCKCHAIN INTEGRADA
+  const handlePrintCentralizadorPDF = async (itemCentralizador) => {
+    if (!selectedStudent) {
+      alert("Debe seleccionar un estudiante para imprimir el centralizador.");
+      return;
+    }
+
+    setGeneratingPdf(true);
+    const estId = selectedStudent.id;
+    const numAno = itemCentralizador.numAno;
+
+    try {
+      let resCert;
+      if (numAno === "1") {
+        resCert = await blockchainService.certificar1erAno(estId);
+      } else if (numAno === "2") {
+        resCert = await blockchainService.certificar2doAno(estId);
+      } else if (numAno === "3") {
+        resCert = await blockchainService.certificar3erAno(estId);
+      } else if (numAno === "4") {
+        resCert = await blockchainService.certificar4toAno(estId);
+      } else {
+        resCert = await blockchainService.certificar5toAno(estId);
+      }
+
+      setGeneratingPdf(false);
+      setModalBlockchain({
+        show: true,
+        data: resCert,
+        estudianteId: estId,
+        numAno: numAno
+      });
+    } catch (errBlockchain) {
+      setGeneratingPdf(false);
+      if (errBlockchain?.tx_hash || errBlockchain?.hash_local) {
+        setModalBlockchain({
+          show: true,
+          data: errBlockchain,
+          estudianteId: estId,
+          numAno: numAno
+        });
+      } else {
+        alert(errBlockchain?.message || "No se pudo realizar la certificación Web3 para el centralizador.");
+      }
+    }
+  };
+
+  // CONFIRMACIÓN DE GENERACIÓN PDF DEL CENTRALIZADOR TRAS CERTIFICACIÓN
+  const handleConfirmarImpresionPdf = async () => {
+    if (!modalBlockchain.estudianteId || !modalBlockchain.numAno) return;
+
+    setGeneratingPdf(true);
+    const numAno = modalBlockchain.numAno;
+    const estId = modalBlockchain.estudianteId;
+    const certData = modalBlockchain.data;
+
+    try {
+      if (numAno === "1") {
+        await imprimirCentralizador1erAno(estId, certData);
+      } else if (numAno === "2") {
+        await imprimirCentralizador2doAno(estId, certData);
+      } else if (numAno === "3") {
+        await imprimirCentralizador3erAno(estId, certData);
+      } else if (numAno === "4") {
+        await imprimirCentralizador4toAno(estId, certData);
+      } else {
+        await imprimirCentralizador5toAno(estId, certData);
+      }
+    } catch (error) {
+      console.error("Error generando PDF del centralizador:", error);
+      alert("Error al generar el documento PDF del centralizador.");
+    } finally {
+      setGeneratingPdf(false);
+      setModalBlockchain({ show: false, data: null, estudianteId: null, numAno: null });
     }
   };
 
@@ -281,13 +377,28 @@ export const CentralizadoresAcompanante = () => {
                   </span>
                 </div>
 
-                <button
-                  onClick={() => handleOpenCentralizador(item)}
-                  disabled={!selectedStudent}
-                  className="px-4 py-2 rounded-xl bg-[#801B28] text-white font-extrabold hover:bg-[#a32334] text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 shrink-0 flex items-center gap-1.5 justify-center"
-                >
-                  <Eye size={14} /> Abrir Centralizador
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleOpenCentralizador(item)}
+                    disabled={!selectedStudent}
+                    className="px-4 py-2 rounded-xl bg-[#801B28] text-white font-extrabold hover:bg-[#a32334] text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 justify-center"
+                  >
+                    <Eye size={14} /> Abrir Centralizador
+                  </button>
+
+                  <button
+                    onClick={() => handlePrintCentralizadorPDF(item)}
+                    disabled={!selectedStudent || generatingPdf}
+                    title="Imprimir Centralizador PDF con Certificación Blockchain"
+                    className="p-2 rounded-xl bg-slate-100 text-slate-700 font-extrabold hover:bg-slate-900 hover:text-white text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {generatingPdf ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Printer size={15} />
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -334,6 +445,14 @@ export const CentralizadoresAcompanante = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL RESULTADO BLOCKCHAIN CON CONFIRMACIÓN DE IMPRESIÓN */}
+      <BlockchainResultModal
+        show={modalBlockchain.show}
+        onClose={() => setModalBlockchain({ show: false, data: null, estudianteId: null, numAno: null })}
+        onConfirmPrint={handleConfirmarImpresionPdf}
+        data={modalBlockchain.data}
+      />
 
     </div>
   );

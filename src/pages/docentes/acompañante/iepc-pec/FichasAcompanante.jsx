@@ -7,6 +7,7 @@ import {
   UserCheck, 
   Filter,
   Eye,
+  Printer,
   X,
   FileText
 } from 'lucide-react';
@@ -58,6 +59,13 @@ import { FichaB5_5toAno } from '../../../admin/fichas/5año/FichaB5_5toAno';
 import { FichaB6_5toAno } from '../../../admin/fichas/5año/FichaB6_5toAno';
 import { FichaC1_5toAno } from '../../../admin/fichas/5año/FichaC1_5toAno';
 import { FichaC2_5toAno } from '../../../admin/fichas/5año/FichaC2_5toAno';
+
+// IMPORTACIÓN DE CONTROLADORES DE IMPRESIÓN POR AÑO
+import { ejecutarImpresion1erAno } from '../../../../controllers/fichas/fichas1AnoController';
+import { ejecutarImpresion2doAno } from '../../../../controllers/fichas/fichas2AnoController';
+import { ejecutarImpresion3erAno } from '../../../../controllers/fichas/fichas3AnoController';
+import { ejecutarImpresion4toAno } from '../../../../controllers/fichas/fichas4AnoController';
+import { ejecutarImpresion5toAno } from '../../../../controllers/fichas/fichas5AnoController';
 
 // CATÁLOGO COMPLETO DE FORMULARIOS Y FICHAS
 const CATALAGO_FORMULARIOS_MAP = {
@@ -198,6 +206,7 @@ export const FichasAcompanante = () => {
   const [activeFicha, setActiveFicha] = useState(null);
   const [fichaData, setFichaData] = useState({});
   const [actionLoading, setActionLoading] = useState(false);
+  const [printingCode, setPrintingCode] = useState(null);
 
   useEffect(() => {
     const initData = async () => {
@@ -297,6 +306,43 @@ export const FichasAcompanante = () => {
       setFichaData({});
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // FUNCIÓN PARA IMPRIMIR DIRECTAMENTE EL PDF DE UNA FICHA
+  const handlePrintFichaPDF = async (itemFormulario) => {
+    if (!selectedStudent) {
+      alert("Debe seleccionar un estudiante para imprimir la ficha.");
+      return;
+    }
+
+    setPrintingCode(itemFormulario.codigo);
+    const estId = selectedStudent.id;
+    const anoStr = normalizarAnoStr(itemFormulario.ano || selectedAno);
+
+    try {
+      let res = { success: false, message: "" };
+
+      if (anoStr.includes("1")) {
+        res = await ejecutarImpresion1erAno(itemFormulario.codigo, estId);
+      } else if (anoStr.includes("2")) {
+        res = await ejecutarImpresion2doAno(itemFormulario.codigo, estId);
+      } else if (anoStr.includes("3")) {
+        res = await ejecutarImpresion3erAno(itemFormulario.codigo, estId);
+      } else if (anoStr.includes("4")) {
+        res = await ejecutarImpresion4toAno(itemFormulario.codigo, estId);
+      } else if (anoStr.includes("5")) {
+        res = await ejecutarImpresion5toAno(itemFormulario.codigo, estId);
+      }
+
+      if (!res?.success) {
+        alert(res?.message || "No se pudo generar el documento PDF de la ficha.");
+      }
+    } catch (error) {
+      console.error("Error al imprimir ficha:", error);
+      alert("Ocurrió un error al procesar la impresión del PDF.");
+    } finally {
+      setPrintingCode(null);
     }
   };
 
@@ -427,13 +473,28 @@ export const FichasAcompanante = () => {
                   </span>
                 </div>
 
-                <button
-                  onClick={() => handleOpenFicha(item)}
-                  disabled={!selectedStudent}
-                  className="px-4 py-2 rounded-xl bg-[#801B28] text-white font-extrabold hover:bg-[#a32334] text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 shrink-0 flex items-center gap-1.5 justify-center"
-                >
-                  <Eye size={14} /> Evaluar / Llenar
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleOpenFicha(item)}
+                    disabled={!selectedStudent}
+                    className="px-4 py-2 rounded-xl bg-[#801B28] text-white font-extrabold hover:bg-[#a32334] text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 justify-center"
+                  >
+                    <Eye size={14} /> Evaluar / Llenar
+                  </button>
+
+                  <button
+                    onClick={() => handlePrintFichaPDF(item)}
+                    disabled={!selectedStudent || printingCode === item.codigo}
+                    title="Imprimir Ficha PDF"
+                    className="p-2 rounded-xl bg-slate-100 text-slate-700 font-extrabold hover:bg-slate-900 hover:text-white text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {printingCode === item.codigo ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Printer size={15} />
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -55,6 +55,7 @@ import { ProtectedRoute } from "./ProtectedRoute";
 import { ActaAnoContainer } from "../pages/admin/actas/ActaAnoContainer";
 import { ReporteEspecialidad, ReporteEtapa, ReporteGestion } from "../pages/admin/reportes/ReportesPages";
 import { ReportesGuia } from "../pages/docentes/guia/ReportesGuia";
+import { AuditLogsManagement } from "../pages/admin/AuditLogsManagement";
 
 function AppRoutes() {
   return (
@@ -100,6 +101,12 @@ function AppRoutes() {
               path="validacion"
               element={<RevisionValidacionManagement />}
             />
+            <Route
+              path="auditoria"
+              element={<AuditLogsManagement />}
+            />
+
+
             <Route path="reportes/especialidad" element={<ReporteEspecialidad />} />
           <Route path="reportes/etapa" element={<ReporteEtapa />} />
           <Route path="reportes/gestion" element={<ReporteGestion />} />

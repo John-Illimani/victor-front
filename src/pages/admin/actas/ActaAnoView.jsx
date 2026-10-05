@@ -288,7 +288,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
                     </td>
                     <td className="py-3.5 px-4 font-semibold">
                       {acta.dg_nombre && acta.dg_apellido ? (
-                        <span className="text-blue-800">
+                        <span className="text-emerald-800">
                           {`${acta.dg_nombre} ${acta.dg_apellido}`}
                         </span>
                       ) : (

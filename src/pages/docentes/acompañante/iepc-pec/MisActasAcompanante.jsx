@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileCheck2, 
   Eye, 
+  Printer,
   Sparkles, 
   Loader2, 
   AlertCircle,
@@ -24,6 +25,13 @@ import { ActaSocializacion3erAno } from '../../../admin/fichas/3año/ActaSociali
 import { ActaFinalEvolucion_4toAno } from '../../../admin/fichas/4año/ActaFinalEvolucion_4toAno';
 import { ActaPostergacion_4toAno } from '../../../admin/fichas/4año/ActaPostergacion_4toAno';
 import { ActaPostergacion_5toAno } from '../../../admin/fichas/5año/ActaPostergacion_5toAno';
+
+// IMPORTACIÓN DE CONTROLADORES DE IMPRESIÓN POR AÑO
+import { ejecutarImpresion1erAno } from '../../../../controllers/fichas/fichas1AnoController';
+import { ejecutarImpresion2doAno } from '../../../../controllers/fichas/fichas2AnoController';
+import { ejecutarImpresion3erAno } from '../../../../controllers/fichas/fichas3AnoController';
+import { ejecutarImpresion4toAno } from '../../../../controllers/fichas/fichas4AnoController';
+import { ejecutarImpresion5toAno } from '../../../../controllers/fichas/fichas5AnoController';
 
 // CATÁLOGO COMPLETO DE FORMULARIOS Y ACTAS
 const CATALAGO_FORMULARIOS_MAP = {
@@ -124,6 +132,7 @@ export const MisActasAcompanante = () => {
   const [selectedActa, setSelectedActa] = useState(null);
   const [fichaData, setFichaData] = useState({});
   const [actionLoading, setActionLoading] = useState(false);
+  const [printingCode, setPrintingCode] = useState(null);
 
   useEffect(() => {
     const fetchActasData = async () => {
@@ -224,6 +233,43 @@ export const MisActasAcompanante = () => {
       setFichaData({});
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // FUNCIÓN PARA IMPRIMIR DIRECTAMENTE EL PDF DE UN ACTA
+  const handlePrintActaPDF = async (acta) => {
+    if (!selectedStudent) {
+      alert("Debe seleccionar un estudiante para imprimir el acta.");
+      return;
+    }
+
+    setPrintingCode(acta.codigo);
+    const estId = selectedStudent.id;
+    const anoStr = normalizarAnoStr(acta.ano || selectedAno);
+
+    try {
+      let res = { success: false, message: "" };
+
+      if (anoStr.includes("1")) {
+        res = await ejecutarImpresion1erAno(acta.codigo, estId);
+      } else if (anoStr.includes("2")) {
+        res = await ejecutarImpresion2doAno(acta.codigo, estId);
+      } else if (anoStr.includes("3")) {
+        res = await ejecutarImpresion3erAno(acta.codigo, estId);
+      } else if (anoStr.includes("4")) {
+        res = await ejecutarImpresion4toAno(acta.codigo, estId);
+      } else if (anoStr.includes("5")) {
+        res = await ejecutarImpresion5toAno(acta.codigo, estId);
+      }
+
+      if (!res?.success) {
+        alert(res?.message || "No se pudo generar el documento PDF del acta.");
+      }
+    } catch (error) {
+      console.error("Error al imprimir acta:", error);
+      alert("Ocurrió un error al procesar la impresión del PDF.");
+    } finally {
+      setPrintingCode(null);
     }
   };
 
@@ -340,13 +386,28 @@ export const MisActasAcompanante = () => {
                   </span>
                 </div>
 
-                <button
-                  onClick={() => handleOpenActaModal(acta)}
-                  disabled={!selectedStudent}
-                  className="px-4 py-2 rounded-xl bg-[#801B28] text-white font-extrabold hover:bg-[#a32334] text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 shrink-0 flex items-center gap-1.5 justify-center"
-                >
-                  <Eye size={14} /> Abrir / Evaluar
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleOpenActaModal(acta)}
+                    disabled={!selectedStudent}
+                    className="px-4 py-2 rounded-xl bg-[#801B28] text-white font-extrabold hover:bg-[#a32334] text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 justify-center"
+                  >
+                    <Eye size={14} /> Abrir / Evaluar
+                  </button>
+
+                  <button
+                    onClick={() => handlePrintActaPDF(acta)}
+                    disabled={!selectedStudent || printingCode === acta.codigo}
+                    title="Imprimir Acta PDF"
+                    className="p-2 rounded-xl bg-slate-100 text-slate-700 font-extrabold hover:bg-slate-900 hover:text-white text-xs cursor-pointer transition-all shadow-sm disabled:opacity-50 flex items-center justify-center"
+                  >
+                    {printingCode === acta.codigo ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Printer size={15} />
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -101,6 +101,11 @@ export const SidebarAdminESFMTHEA = () => {
       ],
     },
     {
+      name: "Auditoría",
+      link: "/admin/auditoria",
+      icon: FileText,
+    },
+    {
       name: "Configuración",
       link: "/admin/configuracion",
       icon: Settings,

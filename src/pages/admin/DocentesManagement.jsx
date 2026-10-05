@@ -24,7 +24,9 @@ import {
   UserMinus,
   FileText,
   UserCheck2,
-  FileCode2
+  FileCode2,
+  School,
+  MapPin
 } from 'lucide-react';
 import { read, utils } from 'xlsx';
 
@@ -325,6 +327,7 @@ export const DocentesAcompañantesManagement = () => {
     type: 'success'
   });
 
+  // Formulario Manual (Incluye los campos manuales del Colegio/U.E.)
   const [formData, setFormData] = useState({
     id: '',
     username: '',
@@ -335,7 +338,10 @@ export const DocentesAcompañantesManagement = () => {
     telefono: '',
     esfm_ua: 'ESFM/UA - El Alto',
     especialidad: '',
-    item_docente: ''
+    item_docente: '',
+    unidad_educativa_nombre: '',
+    nombre_director: '',
+    ubicacion_colegio: ''
   });
 
   const [excelFile, setExcelFile] = useState(null);
@@ -511,7 +517,6 @@ export const DocentesAcompañantesManagement = () => {
   const obtenerFormulariosActivosDelDocente = () => {
     if (!selectedDocente || !selectedDocente.formularios_habilitados) return [];
     
-    // Obtener y normalizar el año del estudiante activo seleccionado
     const estAno = (selectedEstudianteVista?.ano_formacion || "")
       .toLowerCase()
       .normalize("NFD")
@@ -521,14 +526,13 @@ export const DocentesAcompañantesManagement = () => {
       .filter(([key, isEnabled]) => {
         if (!isEnabled || !CATALAGO_FORMULARIOS_MAP[key]) return false;
         
-        if (!selectedEstudianteVista) return true; // Muestra todos si aún no se seleccionó un estudiante
+        if (!selectedEstudianteVista) return true;
 
         const itemAno = (CATALAGO_FORMULARIOS_MAP[key].ano || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
 
-        // Filtro estricto que solo devuelve los formularios del año del estudiante seleccionado
         if (estAno.includes("1") || estAno.includes("primer")) return itemAno.includes("1");
         if (estAno.includes("2") || estAno.includes("segundo")) return itemAno.includes("2");
         if (estAno.includes("3") || estAno.includes("tercer")) return itemAno.includes("3");
@@ -550,6 +554,7 @@ export const DocentesAcompañantesManagement = () => {
     const matchesSearch = 
       (docente.username && docente.username.toLowerCase().includes(search)) ||
       fullName.includes(search) ||
+      (docente.unidad_educativa_nombre && docente.unidad_educativa_nombre.toLowerCase().includes(search)) ||
       (docente.ci && docente.ci.includes(search));
 
     const matchesEspecialidad = especialidadFilter === '' || docente.especialidad === especialidadFilter;
@@ -615,7 +620,10 @@ export const DocentesAcompañantesManagement = () => {
         telefono: formData.telefono,
         esfm_ua: formData.esfm_ua,
         especialidad: formData.especialidad,
-        item_docente: formData.item_docente || null
+        item_docente: formData.item_docente || null,
+        unidad_educativa_nombre: formData.unidad_educativa_nombre || null,
+        nombre_director: formData.nombre_director || null,
+        ubicacion_colegio: formData.ubicacion_colegio || null
       };
 
       if (formData.password) {
@@ -683,7 +691,10 @@ export const DocentesAcompañantesManagement = () => {
       telefono: docente.telefono || '',
       esfm_ua: docente.esfm_ua || 'ESFM/UA - El Alto',
       especialidad: docente.especialidad || (especialidades[0]?.nombre || ''),
-      item_docente: docente.item_docente || ''
+      item_docente: docente.item_docente || '',
+      unidad_educativa_nombre: docente.unidad_educativa_nombre || '',
+      nombre_director: docente.nombre_director || '',
+      ubicacion_colegio: docente.ubicacion_colegio || ''
     });
     setShowNewDocenteModal(true);
   };
@@ -701,7 +712,10 @@ export const DocentesAcompañantesManagement = () => {
       telefono: '',
       esfm_ua: 'ESFM/UA - El Alto',
       especialidad: especialidades[0]?.nombre || '',
-      item_docente: ''
+      item_docente: '',
+      unidad_educativa_nombre: '',
+      nombre_director: '',
+      ubicacion_colegio: ''
     });
   };
 
@@ -741,6 +755,9 @@ export const DocentesAcompañantesManagement = () => {
       const ciIdx = headers.findIndex(h => h.toUpperCase().includes('CÉDULA') || h.toUpperCase().includes('CEDULA'));
       const nameIdx = headers.findIndex(h => h.toUpperCase().includes('NOMBRES'));
       const codIdx = headers.findIndex(h => h.toUpperCase().includes('CÓDIGO') || h.toUpperCase().includes('CODIGO'));
+      const colIdx = headers.findIndex(h => h.toUpperCase().includes('COLEGIO') || h.toUpperCase().includes('UNIDAD'));
+      const dirIdx = headers.findIndex(h => h.toUpperCase().includes('DIRECTOR'));
+      const ubiIdx = headers.findIndex(h => h.toUpperCase().includes('UBICACIÓN') || h.toUpperCase().includes('UBICACION'));
 
       rawRows.forEach(row => {
         if (!row[ciIdx]) return;
@@ -761,7 +778,10 @@ export const DocentesAcompañantesManagement = () => {
           correo: `${ci}@esfm.edu.bo`,
           password: `${ci}*`,
           rol: 'DOCENTE_ACOMPANANTE',
-          item_docente
+          item_docente,
+          unidad_educativa_nombre: colIdx !== -1 && row[colIdx] ? String(row[colIdx]).trim() : '',
+          nombre_director: dirIdx !== -1 && row[dirIdx] ? String(row[dirIdx]).trim() : '',
+          ubicacion_colegio: ubiIdx !== -1 && row[ubiIdx] ? String(row[ubiIdx]).trim() : ''
         });
       });
 
@@ -789,7 +809,6 @@ export const DocentesAcompañantesManagement = () => {
     }
   };
 
-  // Filtrado dinámico para asignación
   const estudiantesDisponiblesFiltrados = todosEstudiantes
     .filter(est => !estudiantesAsignados.some(asig => asig.id === est.id))
     .filter(est => {
@@ -863,7 +882,7 @@ export const DocentesAcompañantesManagement = () => {
           <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Buscar por C.I., nombre o username..."
+            placeholder="Buscar por C.I., nombre, colegio o director..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-2xl border border-slate-200 pl-10 pr-4 py-2.5 text-xs font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
@@ -902,8 +921,8 @@ export const DocentesAcompañantesManagement = () => {
                   />
                 </th>
                 <th className="py-3.5 px-4">Docente</th>
-                <th className="py-3.5 px-4">C.I.</th>
-                <th className="py-3.5 px-4">Especialidad</th>
+                <th className="py-3.5 px-4">Unidad Educativa / Director</th>
+                <th className="py-3.5 px-4">C.I. / Especialidad</th>
                 <th className="py-3.5 px-4 text-center">Estudiantes Asignados</th>
                 <th className="py-3.5 px-4 text-center">Acciones</th>
               </tr>
@@ -933,8 +952,21 @@ export const DocentesAcompañantesManagement = () => {
                         <div className="font-bold text-slate-900">{`${docente.nombre} ${docente.apellido}`}</div>
                         <div className="text-[10px] font-mono text-[#801B28]">{docente.username}</div>
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700">{docente.ci}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-800">{docente.especialidad || 'General'}</td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-slate-800 text-[12px] flex items-center gap-1">
+                          <School size={13} className="text-[#8C731A]" />
+                          {docente.unidad_educativa_nombre || docente.esfm_ua || 'Sin Registrar'}
+                        </div>
+                        {docente.nombre_director && (
+                          <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                            Dir: {docente.nombre_director}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700">
+                        <div>{docente.ci}</div>
+                        <div className="text-[11px] text-slate-500 font-semibold">{docente.especialidad || 'General'}</div>
+                      </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-amber-50 text-[#8C731A] font-black text-xs border border-amber-200">
                           {docente.estudiantes_asignados_count || 0} Estudiantes
@@ -980,7 +1012,7 @@ export const DocentesAcompañantesManagement = () => {
         </div>
       </div>
 
-      {/* MODAL GESTIÓN DEL DOCENTE (ASIGNACIONES + CONTROL + VER FORMULARIOS HABILITADOS) */}
+      {/* MODAL GESTIÓN DEL DOCENTE */}
       {showModal && selectedDocente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="relative w-full max-w-4xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -991,7 +1023,7 @@ export const DocentesAcompañantesManagement = () => {
               <X size={20} />
             </button>
 
-            {/* ENCABEZADO Y BOTÓN DE ADMINISTRACIÓN DE FORMULARIOS */}
+            {/* ENCABEZADO */}
             <div className="border-b border-slate-200 pb-4 mb-6 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#8C731A]">
@@ -1000,9 +1032,12 @@ export const DocentesAcompañantesManagement = () => {
                 <h2 className="text-2xl font-black text-slate-900">
                   {`${selectedDocente.nombre} ${selectedDocente.apellido}`}
                 </h2>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">
-                  C.I.: {selectedDocente.ci} | Especialidad: {selectedDocente.especialidad || 'General'}
-                </p>
+                <div className="text-xs text-slate-600 font-medium mt-1 space-y-0.5">
+                  <p className="font-mono font-bold">C.I.: {selectedDocente.ci}</p>
+                  <p><strong>U.E. / Colegio:</strong> {selectedDocente.unidad_educativa_nombre || selectedDocente.esfm_ua || 'Sin Asignar'}</p>
+                  {selectedDocente.nombre_director && <p><strong>Director:</strong> {selectedDocente.nombre_director}</p>}
+                  {selectedDocente.ubicacion_colegio && <p><strong>Ubicación:</strong> {selectedDocente.ubicacion_colegio}</p>}
+                </div>
               </div>
 
               <button
@@ -1018,7 +1053,7 @@ export const DocentesAcompañantesManagement = () => {
               </button>
             </div>
 
-            {/* SECCIÓN PANEL DE CONTROL DE HABILITACIÓN ADMINISTRATIVA (DESPLEGADO ENCIMA) */}
+            {/* PANEL DE CONTROL DE HABILITACIÓN ADMINISTRATIVA */}
             {showFormulariosPanel && (
               <div className="rounded-3xl border border-amber-200 bg-amber-50/40 p-5 mb-6 space-y-4 animate-in fade-in slide-in-from-top-2">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/80 pb-3">
@@ -1090,7 +1125,6 @@ export const DocentesAcompañantesManagement = () => {
                   </span>
                 </div>
 
-                {/* SELECTOR DEL ESTUDIANTE A CONSULTAR */}
                 {estudiantesAsignados.length > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-extrabold text-slate-500">Estudiante:</span>
@@ -1318,7 +1352,7 @@ export const DocentesAcompañantesManagement = () => {
         </div>
       )}
 
-      {/* RENDERIZADO DIRECTO Y ÚNICO DEL COMPONENTE EXPLÍCITO DE LA FICHA */}
+      {/* RENDERIZADO DIRECTO DE LA FICHA */}
       {activeFicha && selectedEstudianteVista && ComponenteExplicitoDocente && (
         <ComponenteExplicitoDocente
           isOpen={Boolean(activeFicha)}
@@ -1330,7 +1364,7 @@ export const DocentesAcompañantesManagement = () => {
         />
       )}
 
-      {/* MODAL REGISTRAR / EDITAR DOCENTE */}
+      {/* MODAL REGISTRAR / EDITAR DOCENTE ACOMPAÑANTE */}
       {showNewDocenteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -1395,10 +1429,93 @@ export const DocentesAcompañantesManagement = () => {
                   />
                 </div>
 
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">ESFM / Unidad Académica *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.esfm_ua}
+                    onChange={(e) => setFormData({ ...formData, esfm_ua: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
+                    placeholder="Ej. ESFM/UA - El Alto"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-extrabold text-slate-700 mb-1">Especialidad *</label>
+                  <select
+                    required
+                    value={formData.especialidad}
+                    onChange={(e) => setFormData({ ...formData, especialidad: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {especialidades.map((esp) => (
+                      <option key={esp.id || esp.nombre} value={esp.nombre || esp.especialidad}>
+                        {esp.nombre || esp.especialidad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* SECCIÓN DATOS DEL COLEGIO / UNIDAD EDUCATIVA DE ACOMPAÑAMIENTO */}
+                <div className="sm:col-span-2 rounded-2xl bg-amber-50/60 p-4 border border-amber-200 space-y-3">
+                  <span className="text-[11px] font-black uppercase text-[#8C731A] flex items-center gap-1.5">
+                    <School size={16} /> Datos del Colegio
+                  </span>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="sm:col-span-1">
+                      <label className="block font-extrabold text-slate-700 mb-1">Nombre Colegio / U.E.</label>
+                      <input
+                        type="text"
+                        value={formData.unidad_educativa_nombre}
+                        onChange={(e) => setFormData({ ...formData, unidad_educativa_nombre: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                        placeholder="Ej. U.E. Franz Tamayo"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-1">
+                      <label className="block font-extrabold text-slate-700 mb-1">Nombre del Director(a)</label>
+                      <input
+                        type="text"
+                        value={formData.nombre_director}
+                        onChange={(e) => setFormData({ ...formData, nombre_director: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                        placeholder="Ej. Lic. Roberto Quispe"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-1">
+                      <label className="block font-extrabold text-slate-700 mb-1">Ubicación del Colegio</label>
+                      <input
+                        type="text"
+                        value={formData.ubicacion_colegio}
+                        onChange={(e) => setFormData({ ...formData, ubicacion_colegio: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-medium text-slate-800 focus:border-[#8C731A] focus:outline-none"
+                        placeholder="Ej. Zona San Martín, Calle 4"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-extrabold text-slate-700 mb-1">Código / Ítem Docente</label>
+                  <input
+                    type="text"
+                    value={formData.item_docente}
+                    onChange={(e) => setFormData({ ...formData, item_docente: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
+                    placeholder="Ej. 206-MMJ11115800"
+                  />
+                </div>
+
+                {/* CREDENCIALES */}
                 <div className="sm:col-span-2 rounded-2xl bg-slate-50 p-4 border border-slate-200 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-black uppercase text-[#801B28] flex items-center gap-1.5">
-                      <Lock size={14} /> Credenciales
+                      <Lock size={14} /> Credenciales de Acceso
                     </span>
                     <button
                       type="button"
@@ -1443,34 +1560,6 @@ export const DocentesAcompañantesManagement = () => {
                       </div>
                     </div>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block font-extrabold text-slate-700 mb-1">Código / Ítem Docente</label>
-                  <input
-                    type="text"
-                    value={formData.item_docente}
-                    onChange={(e) => setFormData({ ...formData, item_docente: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-medium focus:border-[#8C731A] focus:outline-none"
-                    placeholder="Ej. 206-MMJ11115800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-extrabold text-slate-700 mb-1">Especialidad *</label>
-                  <select
-                    required
-                    value={formData.especialidad}
-                    onChange={(e) => setFormData({ ...formData, especialidad: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 px-3 py-2 font-bold text-slate-800 focus:border-[#8C731A] focus:outline-none bg-white cursor-pointer"
-                  >
-                    <option value="">-- Seleccionar --</option>
-                    {especialidades.map((esp) => (
-                      <option key={esp.id || esp.nombre} value={esp.nombre || esp.especialidad}>
-                        {esp.nombre || esp.especialidad}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
