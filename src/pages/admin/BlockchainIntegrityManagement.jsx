@@ -298,15 +298,13 @@ export const BlockchainIntegrityManagement = () => {
         <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-[#F3EFCF] backdrop-blur-md border border-white/15">
-              <Blocks size={14} className="text-[#6B9E1E]" /> Consola de Integridad Inmutable
+              <Blocks size={14} className="text-[#6B9E1E]" /> Consola de Integridad
             </div>
             <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white flex items-center gap-3">
               Integridad Blockchain
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Verificación inalterable mediante código PDF417 de certificados. PostgreSQL almacena la información principal y Blockchain conserva el Hash SHA-256 de verificación.
-            </p>
+           
           </div>
         </div>
       </div>
@@ -321,7 +319,7 @@ export const BlockchainIntegrityManagement = () => {
               Verificación de Integridad Criptográfica
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Escanea el código de barras PDF417 con la cámara o ingresa el Tx-Hash / Hash Local para auditar el documento.
+              Escanea el código de barras con la cámara o ingresa el Tx-Hash / Hash Local para auditar el documento.
             </p>
           </div>
 
@@ -470,9 +468,7 @@ export const BlockchainIntegrityManagement = () => {
               <p>
                 El Administrador <strong className="text-[#F3EFCF]">no puede editar ni alterar los datos almacenados en Blockchain</strong>.
               </p>
-              <p className="text-[11px] text-slate-400">
-                PostgreSQL gestiona la persistencia operativa y la red Blockchain respalda las firmas digitales mediante Hash SHA-256 para auditorías forenses.
-              </p>
+             
             </div>
           </div>
 

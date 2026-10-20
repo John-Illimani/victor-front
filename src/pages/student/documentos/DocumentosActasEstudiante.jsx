@@ -7,13 +7,30 @@ import {
   CheckCircle2, 
   FileQuestion, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  Eye,
+  X
 } from 'lucide-react';
 
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
 import { studentService } from '../../../services/studentService';
+
+// IMPORTACIÓN DE COMPONENTES EXPLÍCITOS PARA ACTAS
+import { ActaConformacion1erAno } from '../../admin/fichas/1año/ActaConformacion1erAno';
+import { ActaInicio2doAno } from '../../admin/fichas/2año/ActaInicio2doAno';
+import { ActaConformacion2doAno } from '../../admin/fichas/2año/ActaConformacion2doAno';
+import { ActaConformacion3erAno } from '../../admin/fichas/3año/ActaConformacion3erAno';
+import { ActaInicio3erAno } from '../../admin/fichas/3año/ActaInicio3erAno';
+import { ActaSocializacion3erAno } from '../../admin/fichas/3año/ActaSocializacion3erAno';
+import { ActaFinalEvolucion_4toAno } from '../../admin/fichas/4año/ActaFinalEvolucion_4toAno';
+import { ActaPostergacion_4toAno } from '../../admin/fichas/4año/ActaPostergacion_4toAno';
+import { ActaPostergacion_5toAno } from '../../admin/fichas/5año/ActaPostergacion_5toAno';
+
+// IMPORTACIÓN DE CONTROLADORES DE IMPRESIÓN POR AÑO
+import { ejecutarImpresion1erAno } from '../../../controllers/fichas/fichas1AnoController';
+import { ejecutarImpresion2doAno } from '../../../controllers/fichas/fichas2AnoController';
+import { ejecutarImpresion3erAno } from '../../../controllers/fichas/fichas3AnoController';
+import { ejecutarImpresion4toAno } from '../../../controllers/fichas/fichas4AnoController';
+import { ejecutarImpresion5toAno } from '../../../controllers/fichas/fichas5AnoController';
 
 // CATÁLOGO COMPLETO DE ACTAS OFICIALES POR AÑO DE FORMACIÓN
 const CATALAGO_ACTAS_ESTUDIANTE = [
@@ -37,6 +54,19 @@ const CATALAGO_ACTAS_ESTUDIANTE = [
   { codigo: "5_ACTA_POSTERGACION", nombre: "Acta de Postergación de la Socialización de Trabajo de Grado", ano: "5to Año" }
 ];
 
+// MAPEO DE COMPONENTES EXPLÍCITOS PARA VISUALIZAR EN MODAL
+const COMPONENTES_ACTAS_MAP = {
+  "1_ACTA_EQUIPO": ActaConformacion1erAno,
+  "2_ACTA_INICIO": ActaInicio2doAno,
+  "2_ACTA_EQUIPO": ActaConformacion2doAno,
+  "3_ACTA_EQUIPO": ActaConformacion3erAno,
+  "3_ACTA_INICIO": ActaInicio3erAno,
+  "3_ACTA_SOCIALIZACION": ActaSocializacion3erAno,
+  "4_ACTA_FINAL": ActaFinalEvolucion_4toAno,
+  "4_ACTA_POSTERGACION": ActaPostergacion_4toAno,
+  "5_ACTA_POSTERGACION": ActaPostergacion_5toAno
+};
+
 // HELPER ROBUSTO PARA NORMALIZAR CUALQUIER FORMATO DE AÑO DE LA API
 const normalizarAnoStr = (cadena) => {
   if (!cadena) return "1er Año";
@@ -57,6 +87,12 @@ export const DocumentosActasEstudiante = () => {
   const [estudianteLogueado, setEstudianteLogueado] = useState(null);
   const [anoDetectado, setAnoDetectado] = useState('1er Año');
   const [actasStatusMap, setActasStatusMap] = useState({});
+
+  // ESTADOS MODAL DE ACTA
+  const [selectedActa, setSelectedActa] = useState(null);
+  const [fichaData, setFichaData] = useState({});
+  const [actionLoading, setActionLoading] = useState(false);
+  const [printingCode, setPrintingCode] = useState(null);
 
   useEffect(() => {
     const cargarEstadoActas = async () => {
@@ -143,123 +179,63 @@ export const DocumentosActasEstudiante = () => {
     acta => normalizarAnoStr(acta.ano) === anoDetectado
   );
 
-  // GENERADOR Y DESCARGADOR DE PDF OFICIAL
-  const handleDownloadPDF = (actaItem) => {
-    const status = actasStatusMap[actaItem.codigo] || { data: {} };
-    const datos = status.data;
+  // ABRIR MODAL PARA VISUALIZAR/EDITAR EL ACTA
+  const handleOpenActaModal = async (acta) => {
+    if (!estudianteLogueado) return;
 
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'letter'
-    });
+    setSelectedActa(acta);
+    setActionLoading(true);
 
-    // ENCABEZADO INSTITUCIONAL
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(128, 27, 40); // #801B28
-    doc.text('ESFM "THEA" - IEPC-PEC', 14, 15);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Escuela Superior de Formación de Maestros — ${actaItem.nombre}`, 14, 20);
-
-    doc.setFontSize(8);
-    doc.text(`Fecha de Emisión: ${new Date().toLocaleDateString('es-BO')}`, 198, 15, { align: 'right' });
-    doc.text(`Gestión: 2026`, 198, 20, { align: 'right' });
-
-    doc.setDrawColor(128, 27, 40);
-    doc.setLineWidth(0.5);
-    doc.line(14, 23, 198, 23);
-
-    // DATOS DEL ESTUDIANTE
-    doc.setFillColor(248, 250, 252);
-    doc.rect(14, 26, 184, 16, 'F');
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    
-    const nombreCompleto = `${estudianteLogueado?.nombre || ''} ${estudianteLogueado?.apellido || ''}`.trim();
-    doc.text(`Estudiante: ${nombreCompleto || 'Sin Datos'}`, 18, 31);
-    doc.text(`C.I.: ${estudianteLogueado?.ci || 'S/N'}   |   Año de Formación: ${anoDetectado}`, 18, 37);
-
-    // CONSTRUCCIÓN DE CONTENIDO Y CAMPOS REGISTRADOS
-    const rows = [];
-    if (Object.keys(datos).length > 0) {
-      Object.entries(datos).forEach(([clave, valor]) => {
-        rows.push([
-          clave.replace(/_/g, ' ').toUpperCase(),
-          typeof valor === 'object' ? JSON.stringify(valor) : String(valor)
-        ]);
-      });
-    } else {
-      rows.push(['ESTADO DE REGISTRO', 'Sin datos registrados en la base de datos']);
-      rows.push(['CÓDIGO DE DOCUMENTO', actaItem.codigo]);
-      rows.push(['AÑO DE FORMACIÓN', actaItem.ano]);
+    try {
+      const res = await studentService.getFicha(estudianteLogueado.id, acta.codigo);
+      setFichaData(res.datos || {});
+    } catch (err) {
+      setFichaData({});
+    } finally {
+      setActionLoading(false);
     }
-
-    autoTable(doc, {
-      head: [['Campo / Parámetro Evaluado', 'Valor Registrado']],
-      body: rows,
-      startY: 46,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [128, 27, 40],
-        textColor: [255, 255, 255],
-        fontSize: 8,
-        fontStyle: 'bold',
-        halign: 'left'
-      },
-      bodyStyles: {
-        fontSize: 8,
-        textColor: [30, 41, 59]
-      },
-      alternateRowStyles: {
-        fillColor: [248, 250, 252]
-      },
-      didDrawPage: (data) => {
-        // MARCA DE AGUA
-        doc.saveGraphicsState();
-        doc.setGState(new doc.GState({ opacity: 0.04 }));
-        doc.setFontSize(28);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(128, 27, 40);
-        doc.text('DOCUMENTO OFICIAL IEPC-PEC', 105, 140, {
-          align: 'center',
-          angle: 35
-        });
-        doc.restoreGraphicsState();
-
-        // PIE DE PÁGINA
-        const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(100, 116, 139);
-        doc.text('Documento Oficial emitido por la Plataforma IEPC-PEC ESFM THEA', 14, pageHeight - 10);
-        doc.text(`Página ${doc.internal.getNumberOfPages()}`, 198, pageHeight - 10, { align: 'right' });
-      }
-    });
-
-    // SECCIÓN DE FIRMAS AL FINAL
-    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 25 : 200;
-    const pageHeight = doc.internal.pageSize.height;
-
-    if (finalY < pageHeight - 40) {
-      doc.setLineWidth(0.3);
-      doc.setDrawColor(51, 65, 85);
-      
-      doc.line(30, finalY, 85, finalY);
-      doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Firma del Estudiante Practicante', 57.5, finalY + 4, { align: 'center' });
-
-      doc.line(125, finalY, 180, finalY);
-      doc.text('Dirección Académica / Docente Acompañante', 152.5, finalY + 4, { align: 'center' });
-    }
-
-    doc.save(`${actaItem.codigo}_${estudianteLogueado?.ci || 'Estudiante'}.pdf`);
   };
+
+  // GENERADOR Y DESCARGADOR DE PDF OFICIAL USANDO CONTROLADORES POR AÑO
+  const handlePrintActaPDF = async (actaItem) => {
+    if (normalizarAnoStr(actaItem.ano) !== anoDetectado) {
+      alert(`Este documento corresponde a ${actaItem.ano} y no pertenece a tu año de formación activo (${anoDetectado}).`);
+      return;
+    }
+
+    if (!estudianteLogueado?.id) return;
+
+    setPrintingCode(actaItem.codigo);
+    const estId = estudianteLogueado.id;
+    const anoStr = normalizarAnoStr(actaItem.ano || anoDetectado);
+
+    try {
+      let res = { success: false, message: "" };
+
+      if (anoStr.includes("1")) {
+        res = await ejecutarImpresion1erAno(actaItem.codigo, estId);
+      } else if (anoStr.includes("2")) {
+        res = await ejecutarImpresion2doAno(actaItem.codigo, estId);
+      } else if (anoStr.includes("3")) {
+        res = await ejecutarImpresion3erAno(actaItem.codigo, estId);
+      } else if (anoStr.includes("4")) {
+        res = await ejecutarImpresion4toAno(actaItem.codigo, estId);
+      } else if (anoStr.includes("5")) {
+        res = await ejecutarImpresion5toAno(actaItem.codigo, estId);
+      }
+
+      if (!res?.success) {
+        alert(res?.message || "No se pudo generar el documento PDF del acta.");
+      }
+    } catch (error) {
+      console.error("Error al imprimir acta:", error);
+      alert("Ocurrió un error al procesar la impresión del PDF.");
+    } finally {
+      setPrintingCode(null);
+    }
+  };
+
+  const ComponenteActaModal = selectedActa ? COMPONENTES_ACTAS_MAP[selectedActa.codigo] : null;
 
   return (
     <div className="space-y-6 font-sans">
@@ -344,21 +320,20 @@ export const DocumentosActasEstudiante = () => {
                 </div>
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
-                  {hasData ? (
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 flex items-center gap-1 mr-2">
-                      <CheckCircle2 size={12} /> Registrado
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-500 flex items-center gap-1 mr-2">
-                      <FileQuestion size={12} /> Vacío / Sin Registro
-                    </span>
-                  )}
+                
+
+                 
 
                   <button
-                    onClick={() => handleDownloadPDF(item)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-[#801B28] text-white text-xs font-extrabold hover:bg-[#a32334] transition-all cursor-pointer shadow-md"
+                    onClick={() => handlePrintActaPDF(item)}
+                    disabled={printingCode === item.codigo}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-[#801B28] text-white text-xs font-extrabold hover:bg-[#a32334] transition-all cursor-pointer shadow-md disabled:opacity-50"
                   >
-                    <Download size={14} /> PDF
+                    {printingCode === item.codigo ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Download size={14} />
+                    )} PDF
                   </button>
                 </div>
               </div>
@@ -370,6 +345,42 @@ export const DocumentosActasEstudiante = () => {
           </div>
         )}
       </div>
+
+      {/* MODAL DE VISUALIZACIÓN / EVALUACIÓN DE ACTA */}
+      {selectedActa && estudianteLogueado && ComponenteActaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="bg-[#801B28] px-5 py-3 text-white flex items-center justify-between shrink-0">
+              <span className="text-xs font-black tracking-wide uppercase truncate pr-4">
+                {selectedActa.nombre} — ({estudianteLogueado.nombre} {estudianteLogueado.apellido})
+              </span>
+              <button
+                onClick={() => setSelectedActa(null)}
+                className="rounded-full p-1 text-white/80 hover:text-white hover:bg-white/20 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              {actionLoading ? (
+                <div className="py-12 text-center font-bold text-slate-500">
+                  <Loader2 className="animate-spin inline mr-2 text-[#8C731A]" size={20} /> Cargando datos del acta...
+                </div>
+              ) : (
+                <ComponenteActaModal
+                  isOpen={Boolean(selectedActa)}
+                  onClose={() => setSelectedActa(null)}
+                  fichaData={fichaData}
+                  setFichaData={setFichaData}
+                  listaDocentes={[]}
+                  estudianteSeleccionado={estudianteLogueado}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

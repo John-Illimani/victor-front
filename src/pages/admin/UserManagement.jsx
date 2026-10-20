@@ -439,7 +439,8 @@ export const UserManagement = () => {
             especialidad,
             genero,
             modalidad_ingreso: modalidad,
-            ano_formacion: ano
+            ano_formacion: ano,
+            codigo
           });
         });
       }

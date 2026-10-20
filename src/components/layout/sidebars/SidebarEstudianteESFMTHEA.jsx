@@ -37,9 +37,15 @@ const MENU_ITEMS_ESTUDIANTE = [
     icon: FileDown,
     subItems: [
       { name: "Actas", link: "/estudiante/documentos/actas" },
+      { name: "Fichas", link: "/estudiante/documentos/fichas" },
       { name: "Centralizador", link: "/estudiante/documentos/centralizador" },
       { name: "Certificado", link: "/estudiante/documentos/certificado" }
     ]
+  },
+  { 
+    name: "Verificar Integridad", 
+    link: "/estudiante/blockchain", 
+    icon: ShieldCheck
   },
   
   { 

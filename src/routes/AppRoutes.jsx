@@ -45,11 +45,12 @@ import { MiCuentaGuia } from "../pages/docentes/guia/MiCuentaGuia";
 import { EstudianteDashboard } from "../pages/student/EstudianteDashboard";
 import { MisFichasEstudiante } from "../pages/student/MisFichasEstudiante";
 import { DocumentosActasEstudiante } from "../pages/student/documentos/DocumentosActasEstudiante";
+import { DocumentosFichasEstudiante } from "../pages/student/documentos/DocumentosFichasEstudiante";
 import { DocumentosCentralizadorEstudiante } from "../pages/student/documentos/DocumentosCentralizadorEstudiante";
 import { DocumentosCertificadoEstudiante } from "../pages/student/documentos/DocumentosCertificadoEstudiante";
 import { MisActasEstudiante } from "../pages/student/MisActasEstudiante";
 import { MisCalificacionesEstudiante } from "../pages/student/MisCalificacionesEstudiante";
-import { VerificarIntegridadEstudiante } from "../pages/student/VerificarIntegridadEstudiante";
+import { BlockchainIntegrityManagementStudent } from "../pages/student/BlockchainIntegrity";
 import { MiCuentaEstudiante } from "../pages/student/MiCuentaEstudiante";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ActaAnoContainer } from "../pages/admin/actas/ActaAnoContainer";
@@ -170,6 +171,7 @@ function AppRoutes() {
             />
             <Route path="documentos">
               <Route path="actas" element={<DocumentosActasEstudiante />} />
+              <Route path="fichas" element={<DocumentosFichasEstudiante />} />
               <Route
                 path="centralizador"
                 element={<DocumentosCentralizadorEstudiante />}
@@ -180,8 +182,8 @@ function AppRoutes() {
               />
             </Route>
             <Route
-              path="verificar-integridad"
-              element={<VerificarIntegridadEstudiante />}
+              path="blockchain"
+              element={<BlockchainIntegrityManagementStudent />}
             />
             <Route path="cuenta" element={<MiCuentaEstudiante />} />
           </Route>
