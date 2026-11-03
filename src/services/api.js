@@ -8,7 +8,7 @@ export const api = axios.create({
   },
 });
 
-// Interceptor para inyectar automáticamente el Bearer Token en cada petición
+// Interceptor para inyectar automáticamente el Bearer Token en cada petición1
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("access_token");
