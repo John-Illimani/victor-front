@@ -145,7 +145,52 @@ export const ActaAnoView = ({ gestion, ano }) => {
     return idOriginal;
   };
 
-  const handleImprimirFichaEspecifica = async (ficha) => {
+  /**
+   * Evita el bloqueo de ventanas emergentes del navegador.
+   * El navegador solo permite window.open() si ocurre justo en el clic del usuario;
+   * como los generadores de PDF lo llaman después de varios "await", se bloquea.
+   * Solución: abrimos la pestaña EN EL CLIC (antes de cualquier await) y redirigimos
+   * a ella el window.open() que hace el generador.
+   */
+  const ejecutarConVentanaPdf = async (tarea) => {
+    const originalOpen = window.open;
+    const ventana = originalOpen.call(window, "", "_blank");
+    let usada = false;
+
+    if (ventana) {
+      try {
+        ventana.document.title = "Generando PDF...";
+        ventana.document.body.innerHTML =
+          '<p style="font-family:sans-serif;padding:24px;color:#555">Generando documento PDF…</p>';
+      } catch (e) { /* ignorar */ }
+
+      window.open = (url, ...resto) => {
+        if (url && !ventana.closed) {
+          usada = true;
+          ventana.location.href = url;
+          return ventana;
+        }
+        return originalOpen.call(window, url, ...resto);
+      };
+    }
+
+    try {
+      return await tarea();
+    } finally {
+      window.open = originalOpen;
+      // Si no se generó PDF (error, sin datos, etc.) cerramos la pestaña en blanco
+      if (ventana && !usada && !ventana.closed) ventana.close();
+    }
+  };
+
+  const handleImprimirFichaEspecifica = (ficha) => {
+    if (!selectedActa) return;
+    // El centralizador abre primero el modal Blockchain: no necesita pestaña todavía
+    if (ficha.codigo === "CENTRALIZADOR") return imprimirFichaInterno(ficha);
+    return ejecutarConVentanaPdf(() => imprimirFichaInterno(ficha));
+  };
+
+  const imprimirFichaInterno = async (ficha) => {
     if (!selectedActa) return;
 
     setGeneratingPdf(true);
@@ -232,7 +277,12 @@ export const ActaAnoView = ({ gestion, ano }) => {
   };
 
   // Confirmación e Impresión del Centralizador con Blockchain por Año
-  const handleConfirmarImpresionPdf = async () => {
+  const handleConfirmarImpresionPdf = () => {
+    if (!modalBlockchain.estudianteId) return;
+    return ejecutarConVentanaPdf(confirmarImpresionInterno);
+  };
+
+  const confirmarImpresionInterno = async () => {
     if (!modalBlockchain.estudianteId) return;
 
     setGeneratingPdf(true);
