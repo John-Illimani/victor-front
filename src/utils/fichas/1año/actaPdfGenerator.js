@@ -74,6 +74,10 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
   return cursorY;
 }
 
+// Deja solo dígitos del C.I. (ignora espacios, guiones y extensiones como "LP")
+const normCi = (v) => String(v ?? '').replace(/\D/g, '');
+const normNombre = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
 const plainTokens = (text, font, color) =>
   String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color }));
 
@@ -142,7 +146,9 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
   return bottom;
 }
 
-export const imprimirActaConformacion1erAno = async (estudianteId) => {
+// estudianteId              -> ID con el que se carga el acta (puede ser el del titular del equipo)
+// estudianteSeleccionadoId  -> ID del estudiante realmente seleccionado (el que debe ir en la fila N° 1)
+export const imprimirActaConformacion1erAno = async (estudianteId, estudianteSeleccionadoId = estudianteId) => {
   try {
     let response = await actaConformacionService.getByEstudiante(estudianteId);
     let datosActa = null;
@@ -152,7 +158,7 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       const todosEstudiantes = await studentService.getStudents();
       const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
       
-      estudianteLogueado = listaEsts.find(e => String(e.id) === String(estudianteId));
+      estudianteLogueado = listaEsts.find(e => String(e.id) === String(estudianteSeleccionadoId));
       const ciActual = estudianteLogueado ? String(estudianteLogueado.ci || '').trim() : '';
 
       if (response && response.existe && response.datos) {
@@ -164,7 +170,7 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
           const resAlt = await actaConformacionService.getByEstudiante(est.id);
           if (resAlt.existe && resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
             const pertenece = resAlt.datos.integrantes.some(int => 
-              String(int.ci || '').trim() === ciActual
+              normCi(int.ci) !== '' && normCi(int.ci) === normCi(ciActual)
             );
             if (pertenece) {
               datosActa = resAlt.datos;
@@ -188,47 +194,57 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     let integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
 
     // =========================================================================
-    // LÓGICA ESTRICTA: COLOCAR AL ESTUDIANTE SELECCIONADO EN PRIMERA LÍNEA (N° 1)
+    // ESTUDIANTE SELECCIONADO EN LA PRIMERA FILA (N° 1)
+    // - Si figura en la lista de integrantes -> se mueve a la posición [0].
+    // - Si es el dueño del acta y no figura -> se agrega al inicio.
+    // - Si no tiene registro en el acta -> se respeta el orden original.
     // =========================================================================
     if (estudianteLogueado) {
-      const ciLogueado = String(estudianteLogueado.ci || '').trim();
-      const nombreCompletoLogueado = `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim().toLowerCase();
+      const ciSel = normCi(estudianteLogueado.ci);
+      const nombreSel = normNombre(`${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`);
 
-      // 1. Filtrar duplicados existentes en el array por C.I. o Nombre
-      const unicosMap = new Map();
-      (integrantes || []).forEach(item => {
-        const itemCi = String(item.ci || '').trim();
-        const itemNombre = String(item.apellidos_nombres || '').trim().toLowerCase();
-        const key = itemCi || itemNombre;
-        if (key && !unicosMap.has(key)) {
-          unicosMap.set(key, item);
+      // 1. Quitar duplicados (por C.I. o nombre) manteniendo el orden
+      const vistos = new Set();
+      const listaUnica = [];
+      (integrantes || []).forEach((item) => {
+        const key = normCi(item.ci) || normNombre(item.apellidos_nombres);
+        if (key && !vistos.has(key)) {
+          vistos.add(key);
+          listaUnica.push(item);
         }
       });
 
-      let listaUnica = Array.from(unicosMap.values());
-
-      // 2. Buscar y remover al estudiante seleccionado si ya figura en la lista
-      let indexLogueado = listaUnica.findIndex(int => {
-        const intCi = String(int.ci || '').trim();
-        const intNombre = String(int.apellidos_nombres || '').trim().toLowerCase();
-        return (ciLogueado && intCi === ciLogueado) || (intNombre === nombreCompletoLogueado);
+      // 2. Ubicar al estudiante seleccionado
+      const idx = listaUnica.findIndex((int) => {
+        const c = normCi(int.ci);
+        if (ciSel && c) return c === ciSel;
+        return normNombre(int.apellidos_nombres) === nombreSel;
       });
 
-      let datosAdicionales = {};
-      if (indexLogueado !== -1) {
-        datosAdicionales = listaUnica[indexLogueado];
-        listaUnica.splice(indexLogueado, 1);
+      if (idx !== -1) {
+        // Está en el acta: lo subimos a la fila 1
+        const [encontrado] = listaUnica.splice(idx, 1);
+        integrantes = [
+          {
+            ...encontrado,
+            apellidos_nombres: `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim(),
+            ci: estudianteLogueado.ci || encontrado.ci || '',
+          },
+          ...listaUnica,
+        ];
+      } else if (String(estudianteId) === String(estudianteSeleccionadoId)) {
+        // Es el dueño del acta pero no figura en la lista: lo agregamos al inicio
+        integrantes = [
+          {
+            apellidos_nombres: `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim(),
+            ci: estudianteLogueado.ci || '',
+          },
+          ...listaUnica,
+        ];
+      } else {
+        // No tiene registro en este acta: orden normal
+        integrantes = listaUnica;
       }
-
-      // 3. Crear el objeto principal con los datos oficiales del estudiante seleccionado
-      const principalObj = {
-        apellidos_nombres: `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim(),
-        ci: estudianteLogueado.ci || '',
-        ...datosAdicionales
-      };
-
-      // 4. Posicionar OBLIGATORIAMENTE al estudiante seleccionado en la posición [0] (N° 1)
-      integrantes = [principalObj, ...listaUnica];
     }
 
     const urlPlantilla = '/pdf/1ano/plantilla.pdf';

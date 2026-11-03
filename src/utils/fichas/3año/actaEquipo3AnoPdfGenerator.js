@@ -77,42 +77,51 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
   return cursorY;
 }
 
-export const imprimirActaEquipo3erAno = async (estudianteId) => {
+export const imprimirActaEquipo3erAno = async (estudianteId, opciones = {}) => {
   try {
-    let response = await actaConformacion3erAnoService.getByEstudiante(estudianteId);
     let datosActa = null;
-    let estudianteLogueado = null;
+    let estudianteObjetivo = opciones.estudianteSeleccionado || null;
 
-    try {
-      const todosEstudiantes = await studentService.getStudents();
-      const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
-      
-      estudianteLogueado = listaEsts.find(e => String(e.id) === String(estudianteId));
-      const ciActual = estudianteLogueado ? String(estudianteLogueado.ci || '').trim() : '';
+    const todosEstudiantes = await studentService.getStudents();
+    const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
+    
+    if (!estudianteObjetivo) {
+      estudianteObjetivo = listaEsts.find(e => String(e.id) === String(estudianteId));
+    }
 
-      if (response && response.datos) {
-        datosActa = response.datos;
-      } else {
-        // Búsqueda cruzada por C.I.
+    const ciActual = estudianteObjetivo ? String(estudianteObjetivo.ci || '').trim() : '';
+
+    // 1. Intentar obtener el acta directa del estudiante clickeado
+    let response = await actaConformacion3erAnoService.getByEstudiante(estudianteId);
+    
+    if (response) {
+      datosActa = response.datos || (response.existe ? response : (response.integrantes ? response : null));
+    }
+
+    // 2. Si no se encontró de forma directa, realizar búsqueda cruzada por C.I. en los demás registros
+    if (!datosActa || !datosActa.integrantes) {
+      try {
         for (const est of listaEsts) {
           if (String(est.id) === String(estudianteId)) continue;
           const resAlt = await actaConformacion3erAnoService.getByEstudiante(est.id);
-          if (resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
-            const pertenece = resAlt.datos.integrantes.some(int => 
+          const altDatos = resAlt?.datos || (resAlt?.integrantes ? resAlt : null);
+          
+          if (altDatos && Array.isArray(altDatos.integrantes)) {
+            const pertenece = altDatos.integrantes.some(int => 
               String(int.ci || '').trim() === ciActual
             );
             if (pertenece) {
-              datosActa = resAlt.datos;
+              datosActa = altDatos;
               break;
             }
           }
         }
+      } catch (errAlt) {
+        console.warn("Búsqueda cruzada de PDF no disponible en 3er Año:", errAlt);
       }
-    } catch (errAlt) {
-      console.warn("Búsqueda cruzada de PDF no disponible en 3er Año:", errAlt);
     }
 
-    if (!datosActa) {
+    if (!datosActa || !datosActa.integrantes) {
       return {
         success: false,
         message: "No existen datos registrados para el Acta de Conformación de Equipo. Primero debes guardar el formulario."
@@ -120,23 +129,49 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
     }
 
     const d = datosActa;
-    let integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
+    let integrantesCrudos = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
 
-    // Reordenar integrantes para colocar al usuario logueado en la primera posición si está en la lista
-    if (estudianteLogueado && Array.isArray(integrantes) && integrantes.length > 0) {
-      const ciLogueado = String(estudianteLogueado.ci || '').trim();
-      const nombreCompletoLogueado = `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim().toLowerCase();
+    // =========================================================================
+    // BLINDAJE DE ORDENAMIENTO Y CELULAR: COLOCAR AL ESTUDIANTE OBJETIVO EN LA POSICIÓN 1
+    // =========================================================================
+    let integrantesFinales = [];
 
-      const indexLogueado = integrantes.findIndex(int => {
+    if (estudianteObjetivo) {
+      const ciObjetivo = String(estudianteObjetivo.ci || '').trim();
+      const nombreCompletoObjetivo = `${estudianteObjetivo.apellido || ''} ${estudianteObjetivo.nombre || ''}`.trim().toUpperCase();
+
+      // Buscar si ya existía en integrantesCrudos para rescatar su número de celular exacto
+      const coincidenciaCruda = integrantesCrudos.find(int => {
         const intCi = String(int.ci || '').trim();
-        const intNombre = String(int.apellidos_nombres || '').trim().toLowerCase();
-        return (ciLogueado && intCi === ciLogueado) || (intNombre === nombreCompletoLogueado);
+        const intNom = String(int.apellidos_nombres || `${int.apellido || ''} ${int.nombre || ''}`).trim().toUpperCase();
+        return (ciObjetivo && intCi === ciObjetivo) || (intNom && intNom === nombreCompletoObjetivo);
       });
 
-      if (indexLogueado !== -1) {
-        const [integranteEncontrado] = integrantes.splice(indexLogueado, 1);
-        integrantes.unshift(integranteEncontrado);
-      }
+      const principalObj = {
+        apellidos_nombres: nombreCompletoObjetivo,
+        ci: ciObjetivo,
+        celular: coincidenciaCruda?.celular || coincidenciaCruda?.telefono || coincidenciaCruda?.nro_celular || estudianteObjetivo.telefono || estudianteObjetivo.celular || ''
+      };
+
+      integrantesFinales.push(principalObj);
+
+      integrantesCrudos.forEach(int => {
+        const intCi = String(int.ci || '').trim();
+        const intNombre = String(int.apellidos_nombres || `${int.apellido || ''} ${int.nombre || ''}`).trim().toUpperCase();
+
+        const esElMismoCI = ciObjetivo && intCi === ciObjetivo;
+        const esElMismoNombre = intNombre && (intNombre === nombreCompletoObjetivo);
+
+        if (!esElMismoCI && !esElMismoNombre) {
+          integrantesFinales.push({
+            apellidos_nombres: intNombre,
+            ci: intCi,
+            celular: int.celular || int.telefono || int.nro_celular || ''
+          });
+        }
+      });
+    } else {
+      integrantesFinales = integrantesCrudos;
     }
 
     const urlPlantilla = encodeURI('/pdf/3año/plantilla.pdf');
@@ -274,7 +309,7 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
     let currentTableY = tableTop - headerH;
     const hLines = [tableTop, currentTableY];
 
-    const filasIntegrantes = [0, 1, 2].map((idx) => integrantes[idx] || {});
+    const filasIntegrantes = [0, 1, 2].map((idx) => integrantesFinales[idx] || {});
 
     filasIntegrantes.forEach((item, index) => {
       const rowTop = currentTableY;
@@ -284,7 +319,7 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
       const nw = font.widthOfTextAtSize(numStr, 9);
       page.drawText(numStr, { x: colX[0] + colWidths[0] / 2 - nw / 2, y: rowTop - 14, size: 9, font, color: COLOR_TEXT });
 
-      const nomStr = String(item.apellidos_nombres || "").toUpperCase();
+      const nomStr = String(item.apellidos_nombres || item.nombre || "").toUpperCase();
       if (nomStr) {
         page.drawText(nomStr, { x: colX[1] + 8, y: rowTop - 14, size: 9, font: fontBold, color: COLOR_TEXT });
       }
@@ -295,7 +330,7 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
         page.drawText(ciStr, { x: colX[2] + colWidths[2] / 2 - ciW / 2, y: rowTop - 14, size: 9, font, color: COLOR_TEXT });
       }
 
-      const celStr = String(item.celular || item.telefono || "").toUpperCase();
+      const celStr = String(item.celular || item.telefono || item.nro_celular || "").toUpperCase();
       if (celStr) {
         const celW = font.widthOfTextAtSize(celStr, 9);
         page.drawText(celStr, { x: colX[3] + colWidths[3] / 2 - celW / 2, y: rowTop - 14, size: 9, font, color: COLOR_TEXT });

@@ -14,6 +14,7 @@ import { studentService } from "../../../services/studentService";
 import { BlockchainResultModal } from "../../../components/modals/BlockchainResultModal";
 import { blockchainService } from "../../../services/blockchainService";
 import { actaConformacionService } from "../../../services/fichas/1año/actaConformacionService"; // <--- Importado para la búsqueda cruzada de actas
+import { imprimirActaConformacion1erAno } from "../../../utils/fichas/1año/actaPdfGenerator"; // <--- AJUSTA la ruta si tu archivo está en otra carpeta
 import { imprimirCentralizador1erAno } from "../../../utils/fichas/1año/centralizador1AnoPdfGenerator";
 import { imprimirCentralizador2doAno } from "../../../utils/fichas/2año/centralizador2AnoPdfGenerator";
 import { imprimirCentralizador3erAno } from "../../../utils/fichas/3año/centralizador3AnoPdfGenerator";
@@ -203,7 +204,10 @@ export const ActaAnoView = ({ gestion, ano }) => {
 
     // 2. CASO TRADICIONAL: Fichas normales usando el ID resuelto
     let res = { success: false, message: "" };
-    if (es1erAno) {
+    if (es1erAno && ficha.codigo === "1_ACTA_EQUIPO") {
+      // Pasamos: ID del acta (titular) + ID del estudiante SELECCIONADO (va en la fila N° 1)
+      res = await imprimirActaConformacion1erAno(id, selectedActa.id);
+    } else if (es1erAno) {
       res = await ejecutarImpresion1erAno(ficha.codigo, id);
     } else if (es2doAno) {
       res = await ejecutarImpresion2doAno(ficha.codigo, id);
