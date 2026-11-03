@@ -13,6 +13,7 @@ import {
 import { studentService } from "../../../services/studentService";
 import { BlockchainResultModal } from "../../../components/modals/BlockchainResultModal";
 import { blockchainService } from "../../../services/blockchainService";
+import { actaConformacionService } from "../../../services/fichas/1año/actaConformacionService"; // <--- Importado para la búsqueda cruzada de actas
 import { imprimirCentralizador1erAno } from "../../../utils/fichas/1año/centralizador1AnoPdfGenerator";
 import { imprimirCentralizador2doAno } from "../../../utils/fichas/2año/centralizador2AnoPdfGenerator";
 import { imprimirCentralizador3erAno } from "../../../utils/fichas/3año/centralizador3AnoPdfGenerator";
@@ -102,14 +103,55 @@ export const ActaAnoView = ({ gestion, ano }) => {
     setShowPrintModal(true);
   };
 
+  /**
+   * Función auxiliar para resolver el ID correcto del titular en actas comunitarias compartidas por C.I.
+   */
+  const resolverIdEfectivoParaImpresion = async (estudianteSeleccionado, codigoFicha) => {
+    const idOriginal = estudianteSeleccionado.id;
+    // Si no es un acta de equipo/conformación, retornamos el ID directo
+    if (codigoFicha !== "1_ACTA_EQUIPO") {
+      return idOriginal;
+    }
+
+    try {
+      // 1. Verificamos si tiene acta directa
+      const resDirecto = await actaConformacionService.getByEstudiante(idOriginal);
+      if (resDirecto.existe && resDirecto.datos) {
+        return idOriginal;
+      }
+
+      // 2. Si no tiene directa, realizamos búsqueda cruzada en los demás estudiantes por C.I.
+      const todosLosEstudiantes = await studentService.getStudents();
+      const listaEsts = Array.isArray(todosLosEstudiantes) ? todosLosEstudiantes : todosLosEstudiantes?.estudiantes || [];
+      const ciBuscado = String(estudianteSeleccionado.ci || "").trim();
+
+      for (const est of listaEsts) {
+        if (est.id === idOriginal) continue;
+        const resAlt = await actaConformacionService.getByEstudiante(est.id);
+        if (resAlt.existe && resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
+          const pertenece = resAlt.datos.integrantes.some(
+            (int) => String(int.ci || "").trim() === ciBuscado
+          );
+          if (pertenece) {
+            return est.id; // Retornamos el ID del estudiante titular que creó el acta para que cargue perfectamente al imprimir
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Advertencia en resolución cruzada para impresión:", error);
+    }
+
+    return idOriginal;
+  };
+
   const handleImprimirFichaEspecifica = async (ficha) => {
     if (!selectedActa) return;
 
     setGeneratingPdf(true);
     const a = (selectedActa.ano_formacion || ano || "").toString().toUpperCase();
     
-    // Extracción estricta únicamente del ID del estudiante
-    const id = selectedActa.id;
+    // Obtenemos el ID efectivo (resolviendo equipos comunitarios si aplica)
+    const id = await resolverIdEfectivoParaImpresion(selectedActa, ficha.codigo);
 
     const es1erAno = a.includes("1") || a.includes("PRIMER");
     const es2doAno = a.includes("2") || a.includes("SEGUNDO");
@@ -159,7 +201,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
       return;
     }
 
-    // 2. CASO TRADICIONAL: Fichas normales comparando únicamente id de estudiante
+    // 2. CASO TRADICIONAL: Fichas normales usando el ID resuelto
     let res = { success: false, message: "" };
     if (es1erAno) {
       res = await ejecutarImpresion1erAno(ficha.codigo, id);
@@ -221,9 +263,7 @@ export const ActaAnoView = ({ gestion, ano }) => {
               Gestión {gestion} → {ano}º Año
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Consola de administración, impresión de fichas e inmutabilidad Web3.
-            </p>
+           
           </div>
         </div>
       </div>

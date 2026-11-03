@@ -75,10 +75,10 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 }
 
 const plainTokens = (text, font, color) =>
-  text.split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color }));
+  String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color }));
 
 const underlineTokens = (text, font, color) =>
-  text.split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
+  String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
 
 function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, rows, headers, font, fontBold }) {
   const colWidths = colFractions.map((f) => f * width);
@@ -148,7 +148,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     let datosActa = null;
     let estudianteLogueado = null;
 
-    // 1. Obtener la lista de estudiantes para identificar al usuario actual y hacer búsqueda cruzada si es necesario
     try {
       const todosEstudiantes = await studentService.getStudents();
       const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
@@ -188,21 +187,48 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     const d = datosActa;
     let integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
 
-    // 2. Si el estudiante logueado está en la lista de integrantes, colocarlo obligatoriamente en la primera posición (arriba)
-    if (estudianteLogueado && Array.isArray(integrantes) && integrantes.length > 0) {
+    // =========================================================================
+    // LÓGICA ESTRICTA: COLOCAR AL ESTUDIANTE SELECCIONADO EN PRIMERA LÍNEA (N° 1)
+    // =========================================================================
+    if (estudianteLogueado) {
       const ciLogueado = String(estudianteLogueado.ci || '').trim();
       const nombreCompletoLogueado = `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim().toLowerCase();
 
-      const indexLogueado = integrantes.findIndex(int => {
+      // 1. Filtrar duplicados existentes en el array por C.I. o Nombre
+      const unicosMap = new Map();
+      (integrantes || []).forEach(item => {
+        const itemCi = String(item.ci || '').trim();
+        const itemNombre = String(item.apellidos_nombres || '').trim().toLowerCase();
+        const key = itemCi || itemNombre;
+        if (key && !unicosMap.has(key)) {
+          unicosMap.set(key, item);
+        }
+      });
+
+      let listaUnica = Array.from(unicosMap.values());
+
+      // 2. Buscar y remover al estudiante seleccionado si ya figura en la lista
+      let indexLogueado = listaUnica.findIndex(int => {
         const intCi = String(int.ci || '').trim();
         const intNombre = String(int.apellidos_nombres || '').trim().toLowerCase();
         return (ciLogueado && intCi === ciLogueado) || (intNombre === nombreCompletoLogueado);
       });
 
+      let datosAdicionales = {};
       if (indexLogueado !== -1) {
-        const [integranteEncontrado] = integrantes.splice(indexLogueado, 1);
-        integrantes.unshift(integranteEncontrado);
+        datosAdicionales = listaUnica[indexLogueado];
+        listaUnica.splice(indexLogueado, 1);
       }
+
+      // 3. Crear el objeto principal con los datos oficiales del estudiante seleccionado
+      const principalObj = {
+        apellidos_nombres: `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim(),
+        ci: estudianteLogueado.ci || '',
+        ...datosAdicionales
+      };
+
+      // 4. Posicionar OBLIGATORIAMENTE al estudiante seleccionado en la posición [0] (N° 1)
+      integrantes = [principalObj, ...listaUnica];
     }
 
     const urlPlantilla = '/pdf/1ano/plantilla.pdf';
