@@ -848,13 +848,7 @@ export const DocentesAcompañantesManagement = () => {
               <FileSpreadsheet size={16} />
               Cargar Excel
             </button>
-            <button
-              onClick={() => { resetForm(); setShowNewDocenteModal(true); }}
-              className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-4 py-3 text-xs font-extrabold uppercase text-white shadow-lg hover:bg-[#a32334] transition-all cursor-pointer"
-            >
-              <UserPlus size={16} />
-              + Nuevo Docente
-            </button>
+           
           </div>
         </div>
       </div>

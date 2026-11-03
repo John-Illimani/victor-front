@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { actaConformacion2doAnoService } from "../../../services/fichas/2año/actaConformacion2doAnoService";
+import { studentService } from "../../../services/studentService";
 
 // =============================================================================
 // COLORES INSTITUCIONALES OFICIALES
@@ -53,7 +54,6 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
         color: token.color || COLOR_TEXT,
       });
 
-      // Dibujar línea punteada exacta bajo cada dato rellenado del párrafo
       if (token.underline) {
         page.drawLine({
           start: { x: cursorX, y: cursorY - 1.5 },
@@ -79,7 +79,6 @@ const plainTokens = (text, font, color) =>
 const underlineTokens = (text, font, color) =>
   text.split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
 
-// Helper para envolver texto en celdas de tabla manteniendo el contenido estricto en 9 pt fijo
 function wrapTextToLines(text, font, maxWidth, fontSize) {
   if (!text) return [""];
   const words = text.split(" ");
@@ -107,7 +106,7 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rows, header
   const colX = [x];
   colWidths.forEach((w, i) => colX.push(colX[i] + w));
 
-  const fontSize = 9; // Contenido estrictamente en 9 pt (Calibri)
+  const fontSize = 9;
   const cellPadding = 6;
   const lineHeight = 11;
 
@@ -132,7 +131,6 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rows, header
   const top = y;
   const bottom = y - totalHeight;
 
-  // Fondo del encabezado de la tabla (Rojo Guindo Institucional)
   page.drawRectangle({
     x,
     y: top - headerHeight,
@@ -141,29 +139,25 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rows, header
     color: COLOR_TABLE_HEADER,
   });
 
-  // Líneas horizontales del encabezado
   page.drawLine({ start: { x, y: top }, end: { x: x + width, y: top }, thickness: 0.8, color: COLOR_BORDER });
   page.drawLine({ start: { x, y: top - headerHeight }, end: { x: x + width, y: top - headerHeight }, thickness: 0.8, color: COLOR_BORDER });
 
-  // Líneas verticales del encabezado
   colX.forEach((lineX) => {
     page.drawLine({ start: { x: lineX, y: top }, end: { x: lineX, y: top - headerHeight }, thickness: 0.8, color: COLOR_BORDER });
   });
 
-  // Encabezados de columna estrictamente en tamaño 12 pt Bold (Texto blanco)
   headers.forEach((text, i) => {
     const colCenter = colX[i] + colWidths[i] / 2;
     const textWidth = fontBold.widthOfTextAtSize(text, 12);
     page.drawText(text, {
       x: colCenter - textWidth / 2,
       y: top - headerHeight / 2 - 4,
-      size: 12, // 12 pt en nombres de cada columna
+      size: 12,
       font: fontBold,
       color: rgb(1, 1, 1),
     });
   });
 
-  // Renderizar filas de datos con multilínea automática
   let currentTableRowY = top - headerHeight;
 
   processedRows.forEach((rowObj, r) => {
@@ -192,7 +186,7 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rows, header
         page.drawText(lineText, {
           x: textX,
           y: textCursorY,
-          size: fontSize, // 9 pt en contenido
+          size: fontSize,
           font: cellFont,
           color: COLOR_TEXT,
         });
@@ -215,17 +209,64 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rows, header
 
 export const imprimirActaConformacion2doAno = async (estudianteId) => {
   try {
-    // ÚNICA LLAMADA AL SERVICIO PROPIO DE LA API DEL ACTA
-    const responseFicha = await actaConformacion2doAnoService.getByEstudiante(estudianteId);
+    let responseFicha = await actaConformacion2doAnoService.getByEstudiante(estudianteId);
+    let datosActa = null;
+    let estudianteLogueado = null;
 
-    if (!responseFicha || !responseFicha.existe || !responseFicha.datos) {
+    try {
+      const todosEstudiantes = await studentService.getStudents();
+      const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
+      
+      estudianteLogueado = listaEsts.find(e => String(e.id) === String(estudianteId));
+      const ciActual = estudianteLogueado ? String(estudianteLogueado.ci || '').trim() : '';
+
+      if (responseFicha && responseFicha.existe && responseFicha.datos) {
+        datosActa = responseFicha.datos;
+      } else {
+        for (const est of listaEsts) {
+          if (String(est.id) === String(estudianteId)) continue;
+          const resAlt = await actaConformacion2doAnoService.getByEstudiante(est.id);
+          if (resAlt.existe && resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
+            const pertenece = resAlt.datos.integrantes.some(int => 
+              String(int.ci || '').trim() === ciActual
+            );
+            if (pertenece) {
+              datosActa = resAlt.datos;
+              break;
+            }
+          }
+        }
+      }
+    } catch (errAlt) {
+      console.warn("Búsqueda cruzada de PDF no disponible en 2do Año:", errAlt);
+    }
+
+    if (!datosActa || Object.keys(datosActa).length === 0) {
       return {
         success: false,
         message: "No existen datos registrados para el Acta de Conformación de 2do Año. Primero guarda el formulario.",
       };
     }
 
-    const d = responseFicha.datos;
+    const d = datosActa;
+    let integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
+
+    // Reordenar para que el estudiante logueado aparezca primero en la tabla del PDF si está en la lista
+    if (estudianteLogueado && Array.isArray(integrantes) && integrantes.length > 0) {
+      const ciLogueado = String(estudianteLogueado.ci || '').trim();
+      const nombreCompletoLogueado = `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim().toLowerCase();
+
+      const indexLogueado = integrantes.findIndex(int => {
+        const intCi = String(int.ci || '').trim();
+        const intNombre = String(int.apellidos_nombres || '').trim().toLowerCase();
+        return (ciLogueado && intCi === ciLogueado) || (intNombre === nombreCompletoLogueado);
+      });
+
+      if (indexLogueado !== -1) {
+        const [integranteEncontrado] = integrantes.splice(indexLogueado, 1);
+        integrantes.unshift(integranteEncontrado);
+      }
+    }
 
     const urlPlantilla = "/pdf/2año/plantilla.pdf";
     const resFetch = await fetch(urlPlantilla);
@@ -242,7 +283,6 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const page = pdfDoc.getPages()[0];
 
-    // CONFIGURACIÓN DE PÁGINA Y MÁRGENES (3 cm Izq [85.04 pt], 1.81 cm Der [51.31 pt])
     page.setSize(612, 792);
     const pageWidth = 612;
 
@@ -251,12 +291,9 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
 
     const MARGIN_LEFT = 85.04;
     const MARGIN_RIGHT = 51.31;
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT);
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
 
-    // =========================================================================
-    // 1. TÍTULO PRINCIPAL ESTRICTAMENTE EN 13 PT BOLD (3 líneas)
-    // =========================================================================
     let cursorY = 665;
     const titleLines = [
       "ACTA DE CONFORMACIÓN DEL EQUIPO COMUNITARIO DE",
@@ -265,7 +302,7 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
     ];
 
     titleLines.forEach((line) => {
-      const w = fontBold.widthOfTextAtSize(line, 13); // 13 pt en títulos
+      const w = fontBold.widthOfTextAtSize(line, 13);
       page.drawText(line, {
         x: CONTENT_CENTER_X - w / 2,
         y: cursorY,
@@ -278,10 +315,6 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
 
     cursorY -= 10;
 
-    // =========================================================================
-    // 2. PÁRRAFO INTRODUCTORIO CON LÍNEAS PUNTEADAS EN 9 PT
-    // =========================================================================
-    const integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
     const esfmPrediosFinal = d.esfm_predios || "ESFM Simón Bolívar / UA El Alto";
     const especialidadFinal = (d.especialidad || "Educación Primaria Comunitaria Vocacional").toUpperCase();
 
@@ -309,17 +342,14 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
       x: MARGIN_LEFT,
       y: cursorY,
       maxWidth: CONTENT_WIDTH,
-      fontSize: 9, // 9 pt en contenido general
+      fontSize: 9,
       lineHeight: 13.5,
       spaceFont: font,
     });
 
     cursorY -= 14;
 
-    // =========================================================================
-    // 3. TABLA DE INTEGRANTES (ENCABEZADOS 12 PT Y CONTENIDO 9 PT)
-    // =========================================================================
-    const colWidths = [30, 205, 150, 90.65]; // Total 475.65 pt
+    const colWidths = [30, 205, 150, 90.65];
 
     const filas = [0, 1, 2].map((i) => {
       const int = integrantes[i];
@@ -343,17 +373,14 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
       width: CONTENT_WIDTH,
       colFractions: [colWidths[0]/CONTENT_WIDTH, colWidths[1]/CONTENT_WIDTH, colWidths[2]/CONTENT_WIDTH, colWidths[3]/CONTENT_WIDTH],
       headerHeight: 26,
-      headers: ['Nº', 'APELLIDOS Y NOMBRES', 'ESPECIALIDAD', 'C.I.'], // 12 pt gestionado internamente
-      rows: filas,                                                     // 9 pt gestionado internamente
+      headers: ['Nº', 'APELLIDOS Y NOMBRES', 'ESPECIALIDAD', 'C.I.'],
+      rows: filas,
       font,
       fontBold,
     });
 
     cursorY -= 16;
 
-    // =========================================================================
-    // 4. RESPONSABILIDADES Y COMPROMISOS (9 PT)
-    // =========================================================================
     page.drawText('Asumiendo las siguientes responsabilidades y compromisos:', {
       x: MARGIN_LEFT, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT,
     });
@@ -371,7 +398,7 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
         x: MARGIN_LEFT + 25,
         y: cursorY,
         maxWidth: CONTENT_WIDTH - 25,
-        fontSize: 9, // 9 pt
+        fontSize: 9,
         lineHeight: 12.5,
         spaceFont: font,
       });
@@ -390,7 +417,7 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
         x: MARGIN_LEFT,
         y: cursorY,
         maxWidth: CONTENT_WIDTH,
-        fontSize: 9, // 9 pt
+        fontSize: 9,
         lineHeight: 12.5,
         spaceFont: font,
       });
@@ -399,9 +426,6 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
 
     cursorY -= 18;
 
-    // =========================================================================
-    // 5. LUGAR Y FECHA (9 PT CON LÍNEA PUNTEADA)
-    // =========================================================================
     const lblFecha = 'Lugar y fecha: ';
     const valFecha = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || '10'} de ${d.mes || 'septiembre'} de ${d.gestion || '2026'}`;
     
@@ -426,9 +450,6 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
 
     cursorY -= 45;
 
-    // =========================================================================
-    // 6. FIRMAS DE ESTUDIANTES (9 PT)
-    // =========================================================================
     const signatureWidth = 110;
     const totalSignatures = 3;
     const gapBetween = (CONTENT_WIDTH - signatureWidth * totalSignatures) / (totalSignatures - 1);
@@ -443,7 +464,7 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
         color: COLOR_BORDER,
       });
       const label = 'Estudiante';
-      const labelW = font.widthOfTextAtSize(label, 9); // 9 pt
+      const labelW = font.widthOfTextAtSize(label, 9);
       page.drawText(label, {
         x: sigX + signatureWidth / 2 - labelW / 2,
         y: cursorY - 12,
@@ -455,9 +476,6 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
 
     cursorY -= 45;
 
-    // =========================================================================
-    // 7. FIRMA COORDINADOR (9 PT)
-    // =========================================================================
     const coordLine = '..........................................................';
     const coordText1 = 'Coordinador(a) IEPC-PEC';
     const coordText2 = 'o Coordinador(a) UA.';
@@ -477,7 +495,7 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
     page.drawText(coordText1, {
       x: CONTENT_CENTER_X - coordText1W / 2,
       y: cursorY - 12,
-      size: 9, // 9 pt
+      size: 9,
       font,
       color: COLOR_TEXT,
     });
@@ -485,14 +503,11 @@ export const imprimirActaConformacion2doAno = async (estudianteId) => {
     page.drawText(coordText2, {
       x: CONTENT_CENTER_X - coordText2W / 2,
       y: cursorY - 22,
-      size: 9, // 9 pt
+      size: 9,
       font,
       color: COLOR_TEXT,
     });
 
-    // =========================================================================
-    // 8. RENDERIZAR Y MOSTRAR EN NAVEGADOR
-    // =========================================================================
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: "application/pdf" });
     const blobUrl = URL.createObjectURL(blob);

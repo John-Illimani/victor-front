@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { actaConformacion3erAnoService } from '../../../services/fichas/3año/actaConformacion3erAnoService';
+import { studentService } from '../../../services/studentService';
 
 // Paleta de Colores Institucionales
 const COLOR_TEXT = rgb(0, 0, 0);
@@ -15,7 +16,7 @@ const plainTokens = (text, font, color) =>
 const underlineTokens = (text, font, color) =>
   String(text ?? '').split(/\s+/).filter(Boolean).map((w) => ({ text: w, font, color, underline: true }));
 
-// Función de Justificación por Tokens Exacta (Basada en 1er Año)
+// Función de Justificación por Tokens Exacta
 function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHeight, spaceFont }) {
   const spaceWidth = spaceFont.widthOfTextAtSize(' ', fontSize);
 
@@ -57,7 +58,6 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
         color: token.color || COLOR_TEXT,
       });
 
-      // Trazado de línea punteada exactamente debajo de la palabra rellenada
       if (token.underline) {
         page.drawLine({
           start: { x: cursorX, y: cursorY - 1.5 },
@@ -79,16 +79,65 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
 
 export const imprimirActaEquipo3erAno = async (estudianteId) => {
   try {
-    const response = await actaConformacion3erAnoService.getByEstudiante(estudianteId);
+    let response = await actaConformacion3erAnoService.getByEstudiante(estudianteId);
+    let datosActa = null;
+    let estudianteLogueado = null;
 
-    if (!response || !response.datos) {
+    try {
+      const todosEstudiantes = await studentService.getStudents();
+      const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
+      
+      estudianteLogueado = listaEsts.find(e => String(e.id) === String(estudianteId));
+      const ciActual = estudianteLogueado ? String(estudianteLogueado.ci || '').trim() : '';
+
+      if (response && response.datos) {
+        datosActa = response.datos;
+      } else {
+        // Búsqueda cruzada por C.I.
+        for (const est of listaEsts) {
+          if (String(est.id) === String(estudianteId)) continue;
+          const resAlt = await actaConformacion3erAnoService.getByEstudiante(est.id);
+          if (resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
+            const pertenece = resAlt.datos.integrantes.some(int => 
+              String(int.ci || '').trim() === ciActual
+            );
+            if (pertenece) {
+              datosActa = resAlt.datos;
+              break;
+            }
+          }
+        }
+      }
+    } catch (errAlt) {
+      console.warn("Búsqueda cruzada de PDF no disponible en 3er Año:", errAlt);
+    }
+
+    if (!datosActa) {
       return {
         success: false,
-        message: "No existen datos registrados para el Acta de Conformación de Equipo."
+        message: "No existen datos registrados para el Acta de Conformación de Equipo. Primero debes guardar el formulario."
       };
     }
 
-    const d = response.datos;
+    const d = datosActa;
+    let integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
+
+    // Reordenar integrantes para colocar al usuario logueado en la primera posición si está en la lista
+    if (estudianteLogueado && Array.isArray(integrantes) && integrantes.length > 0) {
+      const ciLogueado = String(estudianteLogueado.ci || '').trim();
+      const nombreCompletoLogueado = `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim().toLowerCase();
+
+      const indexLogueado = integrantes.findIndex(int => {
+        const intCi = String(int.ci || '').trim();
+        const intNombre = String(int.apellidos_nombres || '').trim().toLowerCase();
+        return (ciLogueado && intCi === ciLogueado) || (intNombre === nombreCompletoLogueado);
+      });
+
+      if (indexLogueado !== -1) {
+        const [integranteEncontrado] = integrantes.splice(indexLogueado, 1);
+        integrantes.unshift(integranteEncontrado);
+      }
+    }
 
     const urlPlantilla = encodeURI('/pdf/3año/plantilla.pdf');
     let pdfDoc;
@@ -116,7 +165,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
     const pageWidth = 612;
     const pageHeight = 792;
 
-    // Carga de Fuentes Calibri con soporte de la 'ñ'
     let font, fontBold;
     try {
       const resCalibri = await fetch('/fonts/calibri.ttf');
@@ -131,16 +179,14 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
       fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     }
 
-    // MÁRGENES ESTRICTOS: 5 CM ARRIBA (141.73 PT), 3 CM IZQ (85.04 PT), 1.81 CM DER (51.31 PT)
     const MARGIN_TOP = (5 / 2.54) * 72; 
     const MARGIN_LEFT = 85.04;          
     const MARGIN_RIGHT = 51.31;         
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); 
     const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;
 
     let cursorY = pageHeight - MARGIN_TOP;
 
-    // TÍTULO PRINCIPAL (13 pt Bold Dorado Centrado)
     const titleLines = [
       "ACTA DE CONFORMACIÓN Y COMPROMISO DEL EQUIPO",
       "COMUNITARIO DE INVESTIGACIÓN EDUCATIVA",
@@ -162,7 +208,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
 
     cursorY -= 8;
 
-    // PÁRRAFO INTRODUCTORIO JUSTIFICADO TOKENIZADO (IGUAL AL PRIMER AÑO)
     const introTokensList = [
       ...plainTokens('En la ciudad/localidad de', font),
       ...underlineTokens(`${d.lugar_ciudad || 'El Alto'},`, fontBold),
@@ -194,7 +239,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
 
     cursorY -= 14;
 
-    // TABLA DE INTEGRANTES DEL EQUIPO COMUNITARIO
     const tableTop = cursorY;
     const colWidths = [35, 240.65, 100, 100];
     const colX = [MARGIN_LEFT];
@@ -230,32 +274,27 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
     let currentTableY = tableTop - headerH;
     const hLines = [tableTop, currentTableY];
 
-    const rawIntegrantes = Array.isArray(d.integrantes) ? d.integrantes : [];
-    const integrantes = [0, 1, 2].map((idx) => rawIntegrantes[idx] || {});
+    const filasIntegrantes = [0, 1, 2].map((idx) => integrantes[idx] || {});
 
-    integrantes.forEach((item, index) => {
+    filasIntegrantes.forEach((item, index) => {
       const rowTop = currentTableY;
       const rowH = 22;
 
-      // N°
       const numStr = String(index + 1);
       const nw = font.widthOfTextAtSize(numStr, 9);
       page.drawText(numStr, { x: colX[0] + colWidths[0] / 2 - nw / 2, y: rowTop - 14, size: 9, font, color: COLOR_TEXT });
 
-      // Apellidos y Nombres
       const nomStr = String(item.apellidos_nombres || "").toUpperCase();
       if (nomStr) {
         page.drawText(nomStr, { x: colX[1] + 8, y: rowTop - 14, size: 9, font: fontBold, color: COLOR_TEXT });
       }
 
-      // C.I.
       const ciStr = String(item.ci || "").toUpperCase();
       if (ciStr) {
         const ciW = font.widthOfTextAtSize(ciStr, 9);
         page.drawText(ciStr, { x: colX[2] + colWidths[2] / 2 - ciW / 2, y: rowTop - 14, size: 9, font, color: COLOR_TEXT });
       }
 
-      // Nro. de Celular
       const celStr = String(item.celular || item.telefono || "").toUpperCase();
       if (celStr) {
         const celW = font.widthOfTextAtSize(celStr, 9);
@@ -266,7 +305,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
       hLines.push(currentTableY);
     });
 
-    // Bordes de Tabla
     hLines.forEach((lineY) => {
       page.drawLine({ start: { x: MARGIN_LEFT, y: lineY }, end: { x: MARGIN_LEFT + CONTENT_WIDTH, y: lineY }, thickness: 0.8, color: COLOR_BORDER });
     });
@@ -276,13 +314,11 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
 
     cursorY = currentTableY - 18;
 
-    // SUBTÍTULO
     page.drawText("Asumiendo las siguientes responsabilidades y compromisos:", {
       x: MARGIN_LEFT, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT,
     });
     cursorY -= 14;
 
-    // COMPROMISOS CON VIÑETA JUSTIFICADOS
     const compromisos = [
       "Implementar procesos de investigación educativa durante la Práctica Educativa Comunitaria de la presente gestión en la UE/CEA/CEE asignada.",
       "Cumplir con responsabilidad, puntualidad y de manera comunitaria las actividades previstas de la Práctica Educativa Comunitaria.",
@@ -307,7 +343,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
 
     cursorY -= 12;
 
-    // LUGAR Y FECHA CENTRADO SOBRE EL ÁREA ÚTIL
     const lblFecha = 'Lugar y fecha: ';
     const valFecha = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || '21'} de ${d.mes || 'septiembre'} de ${d.gestion || '2026'}`;
     
@@ -332,7 +367,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
 
     cursorY -= 45;
 
-    // 3 FIRMAS SUPERIORES DE ESTUDIANTES
     const colWidthSig = CONTENT_WIDTH / 3;
     const lineW = 120;
 
@@ -362,7 +396,6 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
 
     cursorY -= 50;
 
-    // FIRMA INFERIOR CENTRADA (DOCENTE INVESTIGACIÓN ESFM/UA)
     const lineWDocente = 170;
     const lineDocStartX = CONTENT_CENTER_X - lineWDocente / 2;
     const lineDocEndX = CONTENT_CENTER_X + lineWDocente / 2;
@@ -385,11 +418,10 @@ export const imprimirActaEquipo3erAno = async (estudianteId) => {
       color: COLOR_TEXT,
     });
 
-    // Renderizar y abrir PDF en nueva pestaña
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: 'application/pdf' });
     const blobUrl = URL.createObjectURL(blob);
-
+    
     window.open(blobUrl, '_blank');
     return { success: true };
 

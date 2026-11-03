@@ -15,7 +15,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
-  // Lista general de estudiantes para autocompletado
+  // Lista general de estudiantes para autocompletado y búsqueda global
   const [todosEstudiantes, setTodosEstudiantes] = useState([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(null);
 
@@ -42,6 +42,50 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     ...initialFormState,
     ...fichaData
   });
+
+  // Función para asegurar que el estudiante logueado esté siempre en la primera posición (fila 1)
+  const ordenarIntegrantesConEstudiantePrincipal = (integrantesList, estPrincipal) => {
+    if (!estPrincipal) return integrantesList;
+    const ciPrincipal = String(estPrincipal.ci || '').trim();
+    const nombreCompletoPrincipal = `${estPrincipal.apellido || ''} ${estPrincipal.nombre || ''}`.trim().toLowerCase();
+
+    const principalObj = {
+      apellidos_nombres: `${estPrincipal.apellido || ''} ${estPrincipal.nombre || ''}`.trim(),
+      ci: estPrincipal.ci || '',
+      celular: estPrincipal.telefono || estPrincipal.celular || ''
+    };
+
+    if (!Array.isArray(integrantesList) || integrantesList.length === 0) {
+      return [principalObj];
+    }
+
+    // Buscar si el estudiante principal ya tiene datos personalizados (como celular) en la lista existente
+    let celularEncontrado = principalObj.celular;
+    const listaLimpia = [];
+    const cisVistos = new Set();
+
+    integrantesList.forEach(item => {
+      const itemCi = String(item.ci || '').trim();
+      const itemNombre = String(item.apellidos_nombres || '').trim();
+      
+      const esPrincipal = (ciPrincipal && itemCi === ciPrincipal) || 
+                          (itemNombre.toLowerCase() === nombreCompletoPrincipal);
+
+      if (esPrincipal) {
+        if (item.celular) celularEncontrado = item.celular;
+      } else {
+        if (itemCi && !cisVistos.has(itemCi)) {
+          cisVistos.add(itemCi);
+          listaLimpia.push(item);
+        } else if (!itemCi && itemNombre) {
+          listaLimpia.push(item);
+        }
+      }
+    });
+
+    principalObj.celular = celularEncontrado;
+    return [principalObj, ...listaLimpia];
+  };
 
   // Cargar catálogo de especialidades y lista de estudiantes desde la API
   useEffect(() => {
@@ -70,41 +114,71 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     fetchCatalogos();
   }, [isOpen]);
 
+  // Cargar datos del acta verificando si ya existe de forma directa o cruzada por integrantes
   useEffect(() => {
-    const fetchActa = async () => {
+    const fetchActaYGestionarDatos = async () => {
       if (isOpen && estudianteSeleccionado?.id) {
         setLoading(true);
         try {
-          const res = await actaConformacion3erAnoService.getByEstudiante(estudianteSeleccionado.id);
+          let datosEncontrados = null;
           const espEstudiante = estudianteSeleccionado.especialidad || listaEspecialidades[0] || ESPECIALIDADES_ESFM[0];
+          const gestionEstudiante = String(estudianteSeleccionado.gestion || estudianteSeleccionado.ano_gestion || '2026').slice(0, 4);
 
+          // Intento A: Búsqueda directa
+          const res = await actaConformacion3erAnoService.getByEstudiante(estudianteSeleccionado.id);
           if (res.existe && res.datos) {
-            const d = res.datos;
-            const integrantesCargados = Array.isArray(d.integrantes) && d.integrantes.length > 0 
-              ? d.integrantes 
-              : [{ apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), ci: estudianteSeleccionado.ci || '', celular: estudianteSeleccionado.telefono || '' }];
+            datosEncontrados = res.datos;
+          } else {
+            // Intento B: Búsqueda cruzada en actas de compañeros de equipo
+            try {
+              const listaEsts = Array.isArray(todosEstudiantes) && todosEstudiantes.length > 0 
+                ? todosEstudiantes 
+                : (await studentService.getStudents())?.estudiantes || [];
+              
+              for (const est of listaEsts) {
+                if (String(est.id) === String(estudianteSeleccionado.id)) continue;
+                const resAlt = await actaConformacion3erAnoService.getByEstudiante(est.id);
+                if (resAlt.existe && resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
+                  const pertenece = resAlt.datos.integrantes.some(int => 
+                    String(int.ci || '').trim() === String(estudianteSeleccionado.ci || '').trim()
+                  );
+                  if (pertenece) {
+                    datosEncontrados = resAlt.datos;
+                    break;
+                  }
+                }
+              }
+            } catch (errAlt) {
+              console.warn("Búsqueda cruzada opcional no disponible en 3er Año:", errAlt);
+            }
+          }
+
+          if (datosEncontrados) {
+            const d = datosEncontrados;
+            const integrantesOrdenados = ordenarIntegrantesConEstudiantePrincipal(
+              d.integrantes || [], 
+              estudianteSeleccionado
+            );
 
             setFormData(prev => ({
               ...prev,
               ...d,
+              integrantes: integrantesOrdenados,
               especialidad: d.especialidad || prev.especialidad || espEstudiante,
-              integrantes: integrantesCargados,
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
               departamento: d.departamento || DEPARTAMENTOS_BOLIVIA[0],
               dia: d.dia || String(new Date().getDate()),
               mes: d.mes || MESES_ANIO[new Date().getMonth()],
-              gestion: String(d.gestion || '2026').slice(0, 4)
+              gestion: String(d.gestion || gestionEstudiante).slice(0, 4)
             }));
-            if (setFichaData) setFichaData(d);
+            if (setFichaData) setFichaData({ ...d, integrantes: integrantesOrdenados });
           } else {
+            const defaultIntegrantes = ordenarIntegrantesConEstudiantePrincipal([], estudianteSeleccionado);
             const defaultState = {
               ...initialFormState,
               especialidad: formData.especialidad || espEstudiante,
-              integrantes: [{ 
-                apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), 
-                ci: estudianteSeleccionado.ci || '', 
-                celular: estudianteSeleccionado.telefono || estudianteSeleccionado.celular || '' 
-              }]
+              gestion: gestionEstudiante,
+              integrantes: defaultIntegrantes
             };
             setFormData(prev => ({ ...prev, ...defaultState }));
           }
@@ -116,8 +190,8 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
       }
     };
 
-    fetchActa();
-  }, [isOpen, estudianteSeleccionado]);
+    fetchActaYGestionarDatos();
+  }, [isOpen, estudianteSeleccionado, todosEstudiantes]);
 
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
     setModalNotif({ isOpen: true, titulo, mensaje, tipo });
@@ -135,15 +209,25 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     handleChange('integrantes', list);
   };
 
-  // Seleccionar estudiante de la lista de sugerencias y autocompletar Nombre, CI y Celular
   const handleSelectEstudianteAuto = (idx, est) => {
+    const nuevoCi = String(est.ci || '').trim();
+    const nuevoNombre = `${est.apellido || ''} ${est.nombre || ''}`.trim();
+
+    const yaExiste = formData.integrantes.some((int, i) => i !== idx && String(int.ci || '').trim() === nuevoCi);
+    if (yaExiste) {
+      mostrarNotificacion("Integrante Duplicado", "Este estudiante ya se encuentra registrado en el equipo comunitario.", "error");
+      return;
+    }
+
     const list = [...formData.integrantes];
     list[idx] = {
-      apellidos_nombres: `${est.apellido || ''} ${est.nombre || ''}`.trim(),
-      ci: est.ci || '',
+      apellidos_nombres: nuevoNombre,
+      ci: nuevoCi,
       celular: est.telefono || est.celular || ''
     };
-    handleChange('integrantes', list);
+
+    const listaOrdenada = ordenarIntegrantesConEstudiantePrincipal(list, estudianteSeleccionado);
+    handleChange('integrantes', listaOrdenada);
     setActiveSearchIndex(null);
   };
 
@@ -156,6 +240,10 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
   };
 
   const removeIntegrante = (idx) => {
+    if (idx === 0) {
+      mostrarNotificacion("Acción no permitida", "El estudiante titular del acta no puede ser eliminado de los integrantes.", "error");
+      return;
+    }
     if (formData.integrantes.length <= 1) {
       mostrarNotificacion("Atención", "El equipo comunitario debe contar con al menos un integrante.", "warning");
       return;
@@ -169,9 +257,12 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
       return;
     }
 
+    const integrantesLimpios = ordenarIntegrantesConEstudiantePrincipal(formData.integrantes, estudianteSeleccionado);
+    const payloadFinal = { ...formData, integrantes: integrantesLimpios };
+
     setSaving(true);
     try {
-      const res = await actaConformacion3erAnoService.saveOrUpdate(estudianteSeleccionado.id, formData);
+      const res = await actaConformacion3erAnoService.saveOrUpdate(estudianteSeleccionado.id, payloadFinal);
       mostrarNotificacion("¡Guardado Exitoso!", res.message || "El Acta de Conformación se registró correctamente.", "success");
     } catch (error) {
       mostrarNotificacion("Error al Guardar", error.message || "No se pudieron guardar los datos del acta.", "error");
@@ -186,10 +277,11 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
     setDeleting(true);
     try {
       const res = await actaConformacion3erAnoService.delete(estudianteSeleccionado.id);
+      const clearedIntegrantes = ordenarIntegrantesConEstudiantePrincipal([], estudianteSeleccionado);
       const clearedData = {
         ...initialFormState,
         especialidad: formData.especialidad || estudianteSeleccionado.especialidad || listaEspecialidades[0] || ESPECIALIDADES_ESFM[0],
-        integrantes: [{ apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(), ci: estudianteSeleccionado.ci || '', celular: '' }]
+        integrantes: clearedIntegrantes
       };
 
       setFormData(clearedData);
@@ -308,7 +400,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-center border-b pb-2">
                   <span className="font-extrabold text-slate-800 uppercase text-[11px] flex items-center gap-1.5">
-                    <Users size={15} /> INTEGRANTES DEL EQUIPO COMUNITARIO (MAX 3)
+                    <Users size={15} /> INTEGRANTES DEL EQUIPO COMUNITARIO ({formData.integrantes?.length || 0}/3)
                   </span>
                   <button type="button" onClick={addIntegrante} className="flex items-center gap-1 bg-[#801B28] text-white px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-rose-900 transition-colors cursor-pointer">
                     <Plus size={14} /> Añadir Integrante
@@ -388,7 +480,7 @@ export const ActaConformacion3erAno = ({ isOpen, onClose, fichaData, setFichaDat
                           className="w-full sm:w-36 border p-2 rounded-lg bg-white font-mono outline-none focus:border-[#801B28]"
                         />
 
-                        {formData.integrantes.length > 1 && (
+                        {formData.integrantes.length > 1 && idx !== 0 && (
                           <button
                             type="button"
                             onClick={() => removeIntegrante(idx)}

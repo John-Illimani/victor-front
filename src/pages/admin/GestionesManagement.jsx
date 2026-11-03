@@ -10,7 +10,8 @@ import {
   Sparkles,
   Loader2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 import { gestionService } from '../../services/gestionService';
@@ -23,6 +24,7 @@ export const GestionesManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showActiveLimitModal, setShowActiveLimitModal] = useState(false); // Modal de límite activo
   const [selectedGestion, setSelectedGestion] = useState(null);
 
   // Feedback Modal
@@ -34,7 +36,7 @@ export const GestionesManagement = () => {
     descripcion: '',
     fechaInicio: '',
     fechaFin: '',
-    estado: 'Activa'
+    estado: 'Cerrada' // Por defecto cerrada si ya hay una activa, o se validará al crear
   });
 
   const showFeedback = (title, message, type = 'success') => {
@@ -57,15 +59,27 @@ export const GestionesManagement = () => {
     fetchGestiones();
   }, []);
 
+  // Verificar si ya existe una gestión activa (excluyendo la actual si se está editando)
+  const existeGestionActiva = (excludeId = null) => {
+    return gestiones.some(g => g.estado === 'Activa' && g.id !== excludeId);
+  };
+
   const handleCreateGestion = async (e) => {
     e.preventDefault();
+    
+    // VALIDACIÓN: Si intenta crearla como Activa y ya hay una activa
+    if (formData.estado === 'Activa' && existeGestionActiva()) {
+      setShowCreateModal(false);
+      setShowActiveLimitModal(true);
+      return;
+    }
+
     try {
       await gestionService.createGestion(formData);
       showFeedback('Éxito', `La gestión ${formData.gestion} ha sido creada correctamente.`, 'success');
       setShowCreateModal(false);
-      setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Activa' });
+      setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Cerrada' });
       
-      // Notificación instantánea al Sidebar
       window.dispatchEvent(new Event("gestionChanged"));
       fetchGestiones();
     } catch (err) {
@@ -75,11 +89,17 @@ export const GestionesManagement = () => {
 
   const toggleGestionStatus = async (g) => {
     const nuevoEstado = g.estado === 'Activa' ? 'Cerrada' : 'Activa';
+
+    // VALIDACIÓN: Si intenta activar una y ya hay otra activa en el sistema
+    if (nuevoEstado === 'Activa' && existeGestionActiva()) {
+      setShowActiveLimitModal(true);
+      return;
+    }
+
     try {
       const res = await gestionService.toggleEstadoGestion(g.id, nuevoEstado);
-      showFeedback('Estado Actualizado', res.message || `La gestión ${g.gestion} cambio a ${nuevoEstado}.`, 'success');
+      showFeedback('Estado Actualizado', res.message || `La gestión ${g.gestion} cambió a ${nuevoEstado}.`, 'success');
       
-      // Notificación instantánea al Sidebar
       window.dispatchEvent(new Event("gestionChanged"));
       fetchGestiones();
     } catch (err) {
@@ -101,12 +121,19 @@ export const GestionesManagement = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+
+    // VALIDACIÓN: Si la cambia a Activa y ya hay otra distinta activa
+    if (formData.estado === 'Activa' && existeGestionActiva(selectedGestion.id)) {
+      setShowEditModal(false);
+      setShowActiveLimitModal(true);
+      return;
+    }
+
     try {
       await gestionService.updateGestion(selectedGestion.id, formData);
       showFeedback('Actualizado', `Los datos de la gestión ${formData.gestion} fueron actualizados.`, 'success');
       setShowEditModal(false);
       
-      // Notificación instantánea al Sidebar
       window.dispatchEvent(new Event("gestionChanged"));
       fetchGestiones();
     } catch (err) {
@@ -129,13 +156,13 @@ export const GestionesManagement = () => {
               <Sparkles size={26} className="text-[#8C731A] animate-pulse shrink-0" />
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Apertura, cierre y administración de períodos académicos lectivos para la IEPC-PEC.
+              Apertura, cierre y administración de períodos académicos lectivos para la IEPC-PEC. (Solo una gestión puede estar activa).
             </p>
           </div>
 
           <button
             onClick={() => {
-              setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Activa' });
+              setFormData({ gestion: '', descripcion: '', fechaInicio: '', fechaFin: '', estado: 'Cerrada' });
               setShowCreateModal(true);
             }}
             className="flex items-center gap-2 rounded-2xl bg-[#801B28] px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-lg hover:bg-[#a32334] transition-all cursor-pointer shrink-0"
@@ -221,6 +248,30 @@ export const GestionesManagement = () => {
 
             </div>
           ))}
+        </div>
+      )}
+
+      {/* MODAL LÍMITE DE GESTIÓN ACTIVA (NUEVA) */}
+      {showActiveLimitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+              <AlertTriangle size={30} />
+            </div>
+
+            <h3 className="text-lg font-black text-slate-900 mb-1">No se puede activar la gestión</h3>
+            <p className="text-xs text-slate-600 leading-relaxed mb-6">
+              Ya existe una <strong>gestión activa</strong> en el sistema. Para activar este período, debes cerrar o deshabilitar primero la gestión que se encuentra actualmente en curso. Solo se permite una gestión activa a la vez.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setShowActiveLimitModal(false)}
+              className="w-full rounded-xl bg-slate-900 py-2.5 text-xs font-bold text-white hover:bg-slate-800 shadow-md cursor-pointer"
+            >
+              Entendido
+            </button>
+          </div>
         </div>
       )}
 

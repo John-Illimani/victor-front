@@ -1023,10 +1023,7 @@ export const UserManagement = () => {
             </h3>
 
             <div className="space-y-3 text-xs">
-              <div>
-                <span className="text-slate-400 block font-bold">UUID del Sistema:</span>
-                <span className="text-slate-800 font-mono text-[10px]">{selectedUser.id}</span>
-              </div>
+              
 
               <div>
                 <span className="text-slate-400 block font-bold">Nombre Completo:</span>

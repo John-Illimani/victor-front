@@ -15,7 +15,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Lista general de estudiantes para autocompletado
+  // Lista general de estudiantes para autocompletado y búsqueda global
   const [todosEstudiantes, setTodosEstudiantes] = useState([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(null);
 
@@ -41,6 +41,56 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     ...initialFormState,
     ...fichaData
   });
+
+  // Función para ordenar, garantizar que el estudiante actual esté primero y conservar su especialidad de forma robusta
+  const ordenarIntegrantesConEstudiantePrincipal = (integrantesList, estPrincipal, especialidadGeneralDefault) => {
+    const espDefault = estPrincipal?.especialidad || especialidadGeneralDefault || ESPECIALIDADES_ESFM[0] || '';
+
+    if (!estPrincipal) return integrantesList;
+    const ciPrincipal = String(estPrincipal.ci || '').trim();
+    const nombreCompletoPrincipal = `${estPrincipal.apellido || ''} ${estPrincipal.nombre || ''}`.trim().toLowerCase();
+
+    if (!Array.isArray(integrantesList) || integrantesList.length === 0) {
+      return [{
+        apellidos_nombres: `${estPrincipal.apellido || ''} ${estPrincipal.nombre || ''}`.trim(),
+        especialidad: espDefault,
+        ci: estPrincipal.ci || ''
+      }];
+    }
+
+    let especialidadPrincipalEncontrada = espDefault;
+    const listaLimpia = [];
+    const cisVistos = new Set();
+
+    integrantesList.forEach(item => {
+      const itemCi = String(item.ci || '').trim();
+      const itemNombre = String(item.apellidos_nombres || '').trim();
+      
+      const esPrincipal = (ciPrincipal && itemCi === ciPrincipal) || 
+                          (itemNombre.toLowerCase() === nombreCompletoPrincipal);
+
+      if (esPrincipal) {
+        if (item.especialidad && item.especialidad.trim() !== '') {
+          especialidadPrincipalEncontrada = item.especialidad;
+        }
+      } else {
+        if (itemCi && !cisVistos.has(itemCi)) {
+          cisVistos.add(itemCi);
+          listaLimpia.push(item);
+        } else if (!itemCi && itemNombre) {
+          listaLimpia.push(item);
+        }
+      }
+    });
+
+    const principalObj = {
+      apellidos_nombres: `${estPrincipal.apellido || ''} ${estPrincipal.nombre || ''}`.trim(),
+      especialidad: especialidadPrincipalEncontrada,
+      ci: estPrincipal.ci || ''
+    };
+
+    return [principalObj, ...listaLimpia];
+  };
 
   // Cargar especialidades y lista general de estudiantes
   useEffect(() => {
@@ -70,40 +120,72 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     fetchCatalogos();
   }, [isOpen]);
 
-  // Cargar datos del acta desde el backend
+  // Cargar datos del acta verificando si ya existe de forma directa o cruzada por integrantes
   useEffect(() => {
-    const fetchActa = async () => {
+    const fetchActaYGestionarDatos = async () => {
       if (isOpen && estudianteSeleccionado?.id) {
         setLoading(true);
         try {
-          const res = await actaConformacion2doAnoService.getByEstudiante(estudianteSeleccionado.id);
+          let datosEncontrados = null;
           const espEstudiante = estudianteSeleccionado.especialidad || initialFormState.especialidad;
           const gestionEstudiante = estudianteSeleccionado.gestion || estudianteSeleccionado.ano_gestion || String(new Date().getFullYear());
 
+          // Intento A: Búsqueda directa
+          const res = await actaConformacion2doAnoService.getByEstudiante(estudianteSeleccionado.id);
           if (res.existe && res.datos) {
-            const d = res.datos;
+            datosEncontrados = res.datos;
+          } else {
+            // Intento B: Búsqueda cruzada en actas de compañeros
+            try {
+              const todosLosEstudiantesActivos = await studentService.getStudents();
+              const listaEsts = Array.isArray(todosLosEstudiantesActivos) ? todosLosEstudiantesActivos : todosLosEstudiantesActivos?.estudiantes || [];
+              
+              for (const est of listaEsts) {
+                if (est.id === estudianteSeleccionado.id) continue;
+                const resAlt = await actaConformacion2doAnoService.getByEstudiante(est.id);
+                if (resAlt.existe && resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
+                  const pertenece = resAlt.datos.integrantes.some(int => 
+                    String(int.ci || '').trim() === String(estudianteSeleccionado.ci || '').trim()
+                  );
+                  if (pertenece) {
+                    datosEncontrados = resAlt.datos;
+                    break;
+                  }
+                }
+              }
+            } catch (errAlt) {
+              console.warn("Búsqueda cruzada opcional no disponible en 2do Año:", errAlt);
+            }
+          }
+
+          if (datosEncontrados) {
+            const d = datosEncontrados;
+            const espGeneralForm = d.especialidad || espEstudiante;
+            const integrantesOrdenados = ordenarIntegrantesConEstudiantePrincipal(
+              d.integrantes || [], 
+              estudianteSeleccionado,
+              espGeneralForm
+            );
+
             setFormData(prev => ({
               ...prev,
               ...d,
-              especialidad: d.especialidad || prev.especialidad || espEstudiante,
+              integrantes: integrantesOrdenados,
+              especialidad: espGeneralForm,
               gestion: d.gestion || gestionEstudiante,
               lugar_ciudad: d.lugar_ciudad || 'El Alto',
               departamento: d.departamento || DEPARTAMENTOS_BOLIVIA[0],
               dia: d.dia || String(new Date().getDate()),
               mes: d.mes || MESES_ANIO[new Date().getMonth()],
-              integrantes: Array.isArray(d.integrantes) && d.integrantes.length > 0 ? d.integrantes : initialFormState.integrantes
             }));
-            if (setFichaData) setFichaData(d);
+            if (setFichaData) setFichaData({ ...d, integrantes: integrantesOrdenados, especialidad: espGeneralForm });
           } else {
+            const defaultIntegrantes = ordenarIntegrantesConEstudiantePrincipal([], estudianteSeleccionado, espEstudiante);
             const defaultState = {
               ...initialFormState,
               especialidad: formData.especialidad || espEstudiante,
               gestion: gestionEstudiante,
-              integrantes: [{
-                apellidos_nombres: `${estudianteSeleccionado.nombre || ''} ${estudianteSeleccionado.apellido || ''}`.trim(),
-                especialidad: estudianteSeleccionado.especialidad || espEstudiante,
-                ci: estudianteSeleccionado.ci || ''
-              }]
+              integrantes: defaultIntegrantes
             };
             setFormData(prev => ({ ...prev, ...defaultState }));
           }
@@ -115,7 +197,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
       }
     };
 
-    fetchActa();
+    fetchActaYGestionarDatos();
   }, [isOpen, estudianteSeleccionado]);
 
   const mostrarNotificacion = (titulo, mensaje, tipo = 'info') => {
@@ -134,37 +216,54 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     handleChange('integrantes', list);
   };
 
-  // Seleccionar estudiante de la lista desplegable asignando su Nombre, Especialidad y CI
   const handleSelectEstudianteAuto = (idx, est) => {
+    const nuevoCi = String(est.ci || '').trim();
+    const nuevoNombre = `${est.apellido || ''} ${est.nombre || ''}`.trim();
+    const nuevaEspecialidad = est.especialidad || especialidadesList[0] || '';
+
+    const yaExiste = formData.integrantes.some((int, i) => i !== idx && String(int.ci || '').trim() === nuevoCi);
+    if (yaExiste) {
+      mostrarNotificacion("Integrante Duplicado", "Este estudiante ya se encuentra registrado en el equipo comunitario.", "error");
+      return;
+    }
+
     const list = [...formData.integrantes];
     list[idx] = {
-      apellidos_nombres: `${est.apellido || ''} ${est.nombre || ''}`.trim(),
-      especialidad: est.especialidad || list[idx].especialidad || especialidadesList[0] || '',
-      ci: est.ci || ''
+      apellidos_nombres: nuevoNombre,
+      especialidad: nuevaEspecialidad,
+      ci: nuevoCi
     };
-    handleChange('integrantes', list);
+    
+    const listaOrdenada = ordenarIntegrantesConEstudiantePrincipal(list, estudianteSeleccionado, formData.especialidad);
+    handleChange('integrantes', listaOrdenada);
     setActiveSearchIndex(null);
   };
 
   const addIntegrante = () => {
-    const defaultEsp = especialidadesList[0] || formData.especialidad || '';
+    const defaultEsp = formData.especialidad || especialidadesList[0] || '';
     handleChange('integrantes', [...formData.integrantes, { apellidos_nombres: '', especialidad: defaultEsp, ci: '' }]);
   };
 
   const removeIntegrante = (idx) => {
+    if (idx === 0) {
+      mostrarNotificacion("Acción no permitida", "El estudiante titular del acta no puede ser eliminado de los integrantes.", "error");
+      return;
+    }
     handleChange('integrantes', formData.integrantes.filter((_, i) => i !== idx));
   };
 
-  // Guardar Acta
   const handleSave = async () => {
     if (!estudianteSeleccionado?.id) {
       mostrarNotificacion("Estudiante No Seleccionado", "Debe seleccionar un estudiante antes de guardar.", "error");
       return;
     }
 
+    const integrantesLimpios = ordenarIntegrantesConEstudiantePrincipal(formData.integrantes, estudianteSeleccionado, formData.especialidad);
+    const payloadFinal = { ...formData, integrantes: integrantesLimpios };
+
     setSaving(true);
     try {
-      const res = await actaConformacion2doAnoService.saveOrUpdate(estudianteSeleccionado.id, formData);
+      const res = await actaConformacion2doAnoService.saveOrUpdate(estudianteSeleccionado.id, payloadFinal);
       mostrarNotificacion("¡Guardado Exitoso!", res.message || "El Acta de Conformación fue registrada correctamente.", "success");
     } catch (error) {
       mostrarNotificacion("Error al Guardar", error.message || "No se pudieron guardar los datos.", "error");
@@ -173,18 +272,18 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
     }
   };
 
-  // Eliminar Acta
   const ejecutarEliminacion = async () => {
     if (!estudianteSeleccionado?.id) return;
 
     setDeleting(true);
     try {
       const res = await actaConformacion2doAnoService.delete(estudianteSeleccionado.id);
+      const clearedIntegrantes = ordenarIntegrantesConEstudiantePrincipal([], estudianteSeleccionado, formData.especialidad);
       const clearedData = {
         ...initialFormState,
         especialidad: formData.especialidad || estudianteSeleccionado.especialidad || initialFormState.especialidad,
         gestion: estudianteSeleccionado.gestion || initialFormState.gestion,
-        integrantes: [{ apellidos_nombres: '', especialidad: estudianteSeleccionado.especialidad || initialFormState.especialidad, ci: '' }]
+        integrantes: clearedIntegrantes
       };
 
       setFormData(clearedData);
@@ -301,7 +400,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
               <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="font-extrabold text-slate-800 uppercase text-[11px] flex items-center gap-1.5">
-                    <Users size={15} /> INTEGRANTES DEL EQUIPO COMUNITARIO:
+                    <Users size={15} /> INTEGRANTES DEL EQUIPO COMUNITARIO ({formData.integrantes?.length || 0}):
                   </span>
                   <button type="button" onClick={addIntegrante} className="flex items-center gap-1 bg-[#801B28] text-white px-2.5 py-1 rounded-xl font-bold text-[10px] cursor-pointer hover:bg-rose-900 transition-colors">
                     <Plus size={14} /> Integrante
@@ -384,7 +483,7 @@ export const ActaConformacion2doAno = ({ isOpen, onClose, fichaData, setFichaDat
                           className="w-28 border p-1.5 rounded-lg bg-white font-mono text-xs outline-none focus:border-[#801B28]"
                         />
 
-                        {formData.integrantes.length > 1 && (
+                        {formData.integrantes.length > 1 && idx !== 0 && (
                           <button
                             type="button"
                             onClick={() => removeIntegrante(idx)}

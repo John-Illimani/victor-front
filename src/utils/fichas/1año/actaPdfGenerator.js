@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { actaConformacionService } from '../../../services/fichas/1año/actaConformacionService';
+import { studentService } from '../../../services/studentService';
 
 // =============================================================================
 // COLORES INSTITUCIONALES OFICIALES
@@ -54,7 +55,6 @@ function drawJustifiedParagraph(page, tokens, { x, y, maxWidth, fontSize, lineHe
         color: token.color || COLOR_TEXT,
       });
 
-      // Si el token representa datos rellenados, se dibuja la línea punteada justo por debajo
       if (token.underline) {
         page.drawLine({
           start: { x: cursorX, y: cursorY - 1.5 },
@@ -89,7 +89,6 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
   const top = y;
   const bottom = y - totalHeight;
 
-  // Fondo amarillo institucional del encabezado
   page.drawRectangle({
     x,
     y: top - headerHeight,
@@ -98,19 +97,16 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
     color: COLOR_TABLE_HEADER,
   });
 
-  // Líneas horizontales
   const rowLinesY = [top, top - headerHeight];
   for (let i = 1; i <= rows.length; i++) rowLinesY.push(top - headerHeight - rowHeight * i);
   rowLinesY.forEach((lineY) => {
     page.drawLine({ start: { x, y: lineY }, end: { x: x + width, y: lineY }, thickness: 0.8, color: COLOR_BORDER });
   });
 
-  // Líneas verticales
   colX.forEach((lineX) => {
     page.drawLine({ start: { x: lineX, y: top }, end: { x: lineX, y: bottom }, thickness: 0.8, color: COLOR_BORDER });
   });
 
-  // Texto del encabezado en tamaño 12 pt
   headers.forEach((text, i) => {
     const colCenter = colX[i] + colWidths[i] / 2;
     const textWidth = fontBold.widthOfTextAtSize(text, 12);
@@ -123,7 +119,6 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
     });
   });
 
-  // Filas de datos en tamaño 9 pt
   rows.forEach((rowValues, r) => {
     const rowTop = top - headerHeight - rowHeight * r;
     rowValues.forEach((cell, c) => {
@@ -149,16 +144,66 @@ function drawTable(page, { x, y, width, colFractions, headerHeight, rowHeight, r
 
 export const imprimirActaConformacion1erAno = async (estudianteId) => {
   try {
-    const response = await actaConformacionService.getByEstudiante(estudianteId);
+    let response = await actaConformacionService.getByEstudiante(estudianteId);
+    let datosActa = null;
+    let estudianteLogueado = null;
 
-    if (!response || !response.existe || !response.datos) {
+    // 1. Obtener la lista de estudiantes para identificar al usuario actual y hacer búsqueda cruzada si es necesario
+    try {
+      const todosEstudiantes = await studentService.getStudents();
+      const listaEsts = Array.isArray(todosEstudiantes) ? todosEstudiantes : todosEstudiantes?.estudiantes || [];
+      
+      estudianteLogueado = listaEsts.find(e => String(e.id) === String(estudianteId));
+      const ciActual = estudianteLogueado ? String(estudianteLogueado.ci || '').trim() : '';
+
+      if (response && response.existe && response.datos) {
+        datosActa = response.datos;
+      } else {
+        // Búsqueda cruzada por C.I.
+        for (const est of listaEsts) {
+          if (String(est.id) === String(estudianteId)) continue;
+          const resAlt = await actaConformacionService.getByEstudiante(est.id);
+          if (resAlt.existe && resAlt.datos && Array.isArray(resAlt.datos.integrantes)) {
+            const pertenece = resAlt.datos.integrantes.some(int => 
+              String(int.ci || '').trim() === ciActual
+            );
+            if (pertenece) {
+              datosActa = resAlt.datos;
+              break;
+            }
+          }
+        }
+      }
+    } catch (errAlt) {
+      console.warn("Búsqueda cruzada de PDF no disponible:", errAlt);
+    }
+
+    if (!datosActa || Object.keys(datosActa).length === 0) {
       return {
         success: false,
         message: "No existen datos registrados para el Acta de este estudiante. Primero debes guardar el formulario."
       };
     }
 
-    const d = response.datos;
+    const d = datosActa;
+    let integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
+
+    // 2. Si el estudiante logueado está en la lista de integrantes, colocarlo obligatoriamente en la primera posición (arriba)
+    if (estudianteLogueado && Array.isArray(integrantes) && integrantes.length > 0) {
+      const ciLogueado = String(estudianteLogueado.ci || '').trim();
+      const nombreCompletoLogueado = `${estudianteLogueado.apellido || ''} ${estudianteLogueado.nombre || ''}`.trim().toLowerCase();
+
+      const indexLogueado = integrantes.findIndex(int => {
+        const intCi = String(int.ci || '').trim();
+        const intNombre = String(int.apellidos_nombres || '').trim().toLowerCase();
+        return (ciLogueado && intCi === ciLogueado) || (intNombre === nombreCompletoLogueado);
+      });
+
+      if (indexLogueado !== -1) {
+        const [integranteEncontrado] = integrantes.splice(indexLogueado, 1);
+        integrantes.unshift(integranteEncontrado);
+      }
+    }
 
     const urlPlantilla = '/pdf/1ano/plantilla.pdf';
     const resFetch = await fetch(urlPlantilla);
@@ -175,21 +220,17 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const page = pdfDoc.getPages()[0];
 
-    // HOJA TAMAÑO CARTA Y MÁRGENES SOLICITADOS (3 cm izq, 1.81 cm der)
     page.setSize(612, 792);
     const pageWidth = 612;
 
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const MARGIN_LEFT = 85.04;  // 3 cm exactos
-    const MARGIN_RIGHT = 51.31; // 1.81 cm exactos
-    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); // 475.65 pt
-    const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;       // 322.865 pt
+    const MARGIN_LEFT = 85.04;  
+    const MARGIN_RIGHT = 51.31; 
+    const CONTENT_WIDTH = pageWidth - (MARGIN_LEFT + MARGIN_RIGHT); 
+    const CONTENT_CENTER_X = MARGIN_LEFT + CONTENT_WIDTH / 2;       
 
-    // =========================================================================
-    // 1. TÍTULO PRINCIPAL (13pt Bold Arial/Helvetica, Centrado en Área Útil)
-    // =========================================================================
     let cursorY = 665;
     const titleLines = [
       'ACTA DE CONFORMACIÓN DEL EQUIPO COMUNITARIO DE INVESTIGACIÓN',
@@ -208,11 +249,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     });
 
     cursorY -= 6;
-
-    // =========================================================================
-    // 2. PÁRRAFO INTRODUCTORIO (DATOS SUBRAYADOS CON LÍNEAS PUNTEADAS - 9pt)
-    // =========================================================================
-    const integrantes = typeof d.integrantes === 'string' ? JSON.parse(d.integrantes) : (d.integrantes || []);
 
     const intro = [
       ...plainTokens('En la ciudad/localidad de', font),
@@ -245,9 +281,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
 
     cursorY -= 12;
 
-    // =========================================================================
-    // 3. TABLA DE INTEGRANTES CENTRADA (ENCABEZADOS 12pt, CONTENIDO 9pt)
-    // =========================================================================
     const TABLE_WIDTH = 360; 
     const tableX = CONTENT_CENTER_X - TABLE_WIDTH / 2;
 
@@ -281,9 +314,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
 
     cursorY -= 20;
 
-    // =========================================================================
-    // 4. RESPONSABILIDADES Y COMPROMISOS (9pt Regular / Bold)
-    // =========================================================================
     page.drawText('Asumiendo las siguientes responsabilidades y compromisos:', {
       x: MARGIN_LEFT, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT,
     });
@@ -311,9 +341,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
 
     cursorY -= 8;
 
-    // =========================================================================
-    // 5. LUGAR Y FECHA (CENTRADO SOBRE ÁREA ÚTIL EN 9pt CON LÍNEA PUNTEADA)
-    // =========================================================================
     const lblFecha = 'Lugar y fecha: ';
     const valFecha = `${d.lugar_ciudad || 'El Alto'}, ${d.dia || '17'} de ${d.mes || 'septiembre'} de ${d.gestion || '2026'}`;
     
@@ -328,7 +355,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
     const valStartX = fechaStartX + wLbl;
     page.drawText(valFecha, { x: valStartX, y: cursorY, size: 9, font: fontBold, color: COLOR_TEXT });
     
-    // Línea punteada bajo la fecha
     page.drawLine({
       start: { x: valStartX, y: cursorY - 1.5 },
       end: { x: valStartX + wVal, y: cursorY - 1.5 },
@@ -339,9 +365,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
 
     cursorY -= 45;
 
-    // =========================================================================
-    // 6. FIRMAS DE ESTUDIANTES (CENTRADO INFERIOR DISTRIBUIDO)
-    // =========================================================================
     const signatureWidth = 95;
     const totalSignatures = 3;
     const gapBetween = (CONTENT_WIDTH - signatureWidth * totalSignatures) / (totalSignatures - 1);
@@ -368,9 +391,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
 
     cursorY -= 45;
 
-    // =========================================================================
-    // 7. FIRMA VO.BO. (CENTRADO PERFECTO)
-    // =========================================================================
     const voboLine = '..........................................................';
     const voboText = 'Vo.Bo. Coordinación Académica IEPC-PEC';
 
@@ -393,9 +413,6 @@ export const imprimirActaConformacion1erAno = async (estudianteId) => {
       color: COLOR_TEXT,
     });
 
-    // =========================================================================
-    // 8. RENDERIZAR Y MOSTRAR EN NAVEGADOR
-    // =========================================================================
     const pdfFinalBytes = await pdfDoc.save();
     const blob = new Blob([pdfFinalBytes], { type: 'application/pdf' });
     const blobUrl = URL.createObjectURL(blob);

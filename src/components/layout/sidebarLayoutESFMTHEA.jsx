@@ -307,7 +307,7 @@ export const SidebarLayoutESFMTHEA = ({
             <Menu size={22} />
           </button>
           <span className="font-extrabold text-xs sm:text-sm text-[#1A1A1A]">
-            ESFMTHEA - IEPC-PEC
+            ESFMTHEA - IEPEC-PEC
           </span>
           <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-[#8C731A]/20 flex items-center justify-center text-[#8C731A] font-bold text-xs">
             PEC
