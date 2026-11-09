@@ -7,7 +7,8 @@ import {
   ShieldCheck,
   FileBarChart2,
   User,
-  LogOut
+  LogOut,
+  Blocks
 } from "lucide-react";
 import { SidebarLayoutESFMTHEA } from "../sidebarLayoutESFMTHEA";
 
@@ -42,6 +43,11 @@ const MENU_ITEMS_DOCENTE_ACOMPANANTE = [
   //   link: "/docente-acompanante/verificar-integridad", 
   //   icon: ShieldCheck 
   // },
+   {
+      name: "Integridad Blockchain",
+      link: "/docente-acompanante/blockchain",
+      icon: Blocks,
+    },
   { 
     name: "Reportes", 
     link: "/docente-acompanante/reportes", 

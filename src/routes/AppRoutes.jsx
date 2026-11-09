@@ -57,6 +57,8 @@ import { ActaAnoContainer } from "../pages/admin/actas/ActaAnoContainer";
 import { ReporteEspecialidad, ReporteEtapa, ReporteGestion } from "../pages/admin/reportes/ReportesPages";
 import { ReportesGuia } from "../pages/docentes/guia/ReportesGuia";
 import { AuditLogsManagement } from "../pages/admin/AuditLogsManagement";
+import { BlockchainIntegrityManagementGuia } from "../pages/docentes/guia/BlockchainIntegrityManagementGuia";
+import { BlockchainIntegrityManagementAcompanante } from "../pages/docentes/acompañante/BlockchainIntegrityManagementAcompanante";
 
 function AppRoutes() {
   return (
@@ -141,6 +143,7 @@ function AppRoutes() {
             />
             <Route path="reportes" element={<ReportesAcompanante />} />
             <Route path="cuenta" element={<MiCuentaAcompanante />} />
+            <Route path="blockchain" element={<BlockchainIntegrityManagementAcompanante />} />
           </Route>
         </Route>
 
@@ -152,6 +155,7 @@ function AppRoutes() {
             <Route path="estudiantes" element={<MisEstudiantesGuia />} />
             <Route path="fichas-asignadas" element={<FichasAsignadasGuia />} />
             <Route path="seguimiento" element={<SeguimientoGuia />} />
+            <Route path="blockchain" element={<BlockchainIntegrityManagementGuia />} />
             
             <Route path="reportes" element={<ReportesGuia />} />
             <Route path="cuenta" element={<MiCuentaGuia />} />

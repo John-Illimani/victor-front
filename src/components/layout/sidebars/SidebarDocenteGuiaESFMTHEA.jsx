@@ -6,7 +6,8 @@ import {
   TrendingUp,
   Search,
   User,
-  FileBarChart2
+  FileBarChart2,
+  Blocks
 } from "lucide-react";
 import { SidebarLayoutESFMTHEA } from "../sidebarLayoutESFMTHEA";
 
@@ -32,6 +33,11 @@ const MENU_ITEMS_DOCENTE_GUIA = [
   //   link: "/docente-guia/seguimiento", 
   //   icon: TrendingUp 
   // },
+  {
+      name: "Integridad Blockchain",
+      link: "/docente-guia/blockchain",
+      icon: Blocks,
+    },
   
   { 
     name: "Reportes", 

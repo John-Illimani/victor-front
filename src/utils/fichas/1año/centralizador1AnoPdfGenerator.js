@@ -2,11 +2,23 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { PDF417 } from "pdf417-generator";
 import { centralizador1erAnoService } from "../../../services/fichas/1año/centralizador1erAnoService";
+import { userService } from "../../../services/userService"; // <--- Importado para consultar el usuario por ID
 
 const COLOR_TEXT = rgb(0, 0, 0);
 const COLOR_TITLE = rgb(201 / 255, 167 / 255, 81 / 255); 
 const COLOR_TABLE_HEADER = rgb(247 / 255, 181 / 255, 0); 
 const COLOR_BORDER = rgb(0, 0, 0);
+
+// Función para corregir caracteres corruptos de la BD respetando los espacios
+function fixEncoding(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/¤/g, "ñ")
+    .replace(/¢/g, "ó")
+    .replace(/¡/g, "í")
+    .replace(/£/g, "ú")
+    .replace(/\u00A0/g, " ");
+}
 
 function wrapText(text, font, fontSize, maxWidth) {
   if (!text) return [];
@@ -87,6 +99,43 @@ export const imprimirCentralizador1erAno = async (estudianteId, blockchainData =
     }
 
     const d = response.datos;
+
+    // BÚSQUEDA DEL USUARIO Y ORDENAMIENTO: NOMBRES PRIMERO, LUEGO APELLIDOS (SEPARADOS)
+    let nombreEstudiante = "";
+    const idUsuario = d.estudiante_id || estudianteId;
+
+    try {
+      const usuarioObj = await userService.getUserById ? await userService.getUserById(idUsuario) : null;
+      
+      if (usuarioObj) {
+        const nom = usuarioObj.nombre || usuarioObj.nombres || "";
+        const ape = usuarioObj.apellido || usuarioObj.apellidos || "";
+        nombreEstudiante = `${nom} ${ape}`.trim();
+      }
+    } catch (errUser) {
+      console.warn("No se pudo obtener el usuario por getUserById:", errUser);
+    }
+
+    if (!nombreEstudiante && userService.getUsers) {
+      try {
+        const todosUsuarios = await userService.getUsers();
+        const lista = Array.isArray(todosUsuarios) ? todosUsuarios : todosUsuarios?.usuarios || todosUsuarios?.data || [];
+        const usuarioEncontrado = lista.find(u => u.id === idUsuario);
+        if (usuarioEncontrado) {
+          const nom = usuarioEncontrado.nombre || usuarioEncontrado.nombres || "";
+          const ape = usuarioEncontrado.apellido || usuarioEncontrado.apellidos || "";
+          nombreEstudiante = `${nom} ${ape}`.trim();
+        }
+      } catch (errList) {
+        console.warn("Error al buscar usuario en la lista general:", errList);
+      }
+    }
+
+    if (!nombreEstudiante) {
+      nombreEstudiante = d.apellidos_nombres || d.nombre_completo || "SIN NOMBRE REGISTRADO";
+    }
+
+    nombreEstudiante = fixEncoding(nombreEstudiante);
 
     const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
     const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
@@ -178,9 +227,9 @@ export const imprimirCentralizador1erAno = async (estudianteId, blockchainData =
       cursorY -= 15;
     };
 
-    drawReferentialField("Apellidos y nombres: ", d.apellidos_nombres);
-    drawReferentialField("ESFM/UA: ", d.esfm_ua || "ESFM Simón Bolívar / UA El Alto");
-    drawReferentialField("Especialidad: ", d.especialidad);
+    drawReferentialField("Apellidos y nombres: ", nombreEstudiante);
+    drawReferentialField("ESFM/UA: ", fixEncoding(d.esfm_ua) || "ESFM Simón Bolívar / UA El Alto");
+    drawReferentialField("Especialidad: ", fixEncoding(d.especialidad));
 
     cursorY -= 15;
 
@@ -261,7 +310,7 @@ export const imprimirCentralizador1erAno = async (estudianteId, blockchainData =
 
     // FECHA
     const lblFecha = "Lugar y fecha: ";
-    const valFecha = `${d.lugar_ciudad || "El Alto"}, ${d.dia || "17"} de ${d.mes || "septiembre"} de ${d.ano || "2026"}`;
+    const valFecha = `${d.lugar_ciudad || "El Alto"}, ${d.dia || "17"} de ${fixEncoding(d.mes) || "septiembre"} de ${d.ano || "2026"}`;
     
     const wLbl = fontCalibri.widthOfTextAtSize(lblFecha, 9);
     const wVal = fontCalibriBold.widthOfTextAtSize(valFecha, 9);
@@ -306,7 +355,7 @@ export const imprimirCentralizador1erAno = async (estudianteId, blockchainData =
     const pdf417Height = 45;
 
     const txHashValido = txHash || hashLocal || estudianteId;
-    const pdf417TextData = `ESTUDIANTE:${d.apellidos_nombres || ''}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+    const pdf417TextData = `ESTUDIANTE:${nombreEstudiante}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
 
     const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
 

@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { PDF417 } from "pdf417-generator";
 import { centralizador2doAnoService } from "../../../services/fichas/2año/centralizador2doAnoService";
+import { userService } from "../../../services/userService";
 
 // Paleta de Colores Institucionales
 const COLOR_TEXT = rgb(0, 0, 0);
@@ -75,10 +76,22 @@ const FILAS_CENTRALIZADOR = [
   }
 ];
 
+// Función para corregir caracteres corruptos de la BD (respetando los espacios en blanco)
+function fixEncoding(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/¤/g, "ñ")
+    .replace(/¢/g, "ó")
+    .replace(/¡/g, "í")
+    .replace(/£/g, "ú")
+    .replace(/\u00A0/g, " ") // Espacio no rompible por espacio normal si aplica
+    .replace(/É/g, "É");
+}
+
 function formatNotaEntero(val) {
-  if (val === undefined || val === null || val === "") return "";
+  if (val === undefined || val === null || val === "") return "0";
   const num = Number(val);
-  if (isNaN(num)) return "";
+  if (isNaN(num)) return "0";
   return String(Math.round(num));
 }
 
@@ -189,6 +202,45 @@ export const imprimirCentralizador2doAno = async (estudianteId, blockchainData =
 
     const d = responseCentralizador.datos;
 
+    // BÚSQUEDA DEL USUARIO Y ORDENAMIENTO: NOMBRES PRIMERO, LUEGO APELLIDOS (SEPARADOS)
+    let nombreEstudiante = "";
+    const idUsuario = d.estudiante_id || estudianteId;
+
+    try {
+      const usuarioObj = await userService.getUserById ? await userService.getUserById(idUsuario) : null;
+      
+      if (usuarioObj) {
+        const nom = usuarioObj.nombre || usuarioObj.nombres || "";
+        const ape = usuarioObj.apellido || usuarioObj.apellidos || "";
+        nombreEstudiante = `${nom} ${ape}`.trim();
+      }
+    } catch (errUser) {
+      console.warn("No se pudo obtener el usuario por getUserById:", errUser);
+    }
+
+    if (!nombreEstudiante && userService.getUsers) {
+      try {
+        const todosUsuarios = await userService.getUsers();
+        const lista = Array.isArray(todosUsuarios) ? todosUsuarios : todosUsuarios?.usuarios || todosUsuarios?.data || [];
+        const usuarioEncontrado = lista.find(u => u.id === idUsuario);
+        if (usuarioEncontrado) {
+          const nom = usuarioEncontrado.nombre || usuarioEncontrado.nombres || "";
+          const ape = usuarioEncontrado.apellido || usuarioEncontrado.apellidos || "";
+          nombreEstudiante = `${nom} ${ape}`.trim();
+        }
+      } catch (errList) {
+        console.warn("Error al buscar usuario en la lista general:", errList);
+      }
+    }
+
+    if (!nombreEstudiante) {
+      nombreEstudiante = d.apellidos_nombres || d.nombre_completo || "SIN NOMBRE REGISTRADO";
+    }
+
+    // Normalizar codificación preservando espacios
+    nombreEstudiante = fixEncoding(nombreEstudiante);
+    const anoFormacionLimpio = "2DO AÑO DE FORMACIÓN";
+
     const txHash = blockchainData?.tx_hash || blockchainData?.txHash || '';
     const hashLocal = blockchainData?.hash_local || blockchainData?.hash || '';
 
@@ -267,7 +319,7 @@ export const imprimirCentralizador2doAno = async (estudianteId, blockchainData =
     // DATOS REFERENCIALES
     campoPunteado(page, {
       label: "Nombres y Apellidos: ",
-      value: d.apellidos_nombres || "",
+      value: nombreEstudiante,
       x: MARGIN_LEFT,
       y: cursorY,
       endX: RIGHT_X,
@@ -292,7 +344,7 @@ export const imprimirCentralizador2doAno = async (estudianteId, blockchainData =
     
     campoPunteado(page, {
       label: "Año de Formación: ",
-      value: d.ano_formacion || "2do Año de Formación",
+      value: anoFormacionLimpio,
       x: esfmEnd + 15,
       y: cursorY,
       endX: RIGHT_X,
@@ -517,9 +569,9 @@ export const imprimirCentralizador2doAno = async (estudianteId, blockchainData =
 
     // FECHA
     const labelFecha = "Lugar y fecha: ";
-    const mesFormateado = String(d.mes || "septiembre").toLowerCase();
+    const mesFormateado = String(d.mes || "noviembre").toLowerCase();
     const ciudadFormateada = d.lugar_ciudad || "El Alto";
-    const valFechaText = `${ciudadFormateada}, ${d.dia || "21"} de ${mesFormateado} de ${d.ano || "2026"}`;
+    const valFechaText = `${ciudadFormateada}, ${d.dia || "8"} de ${mesFormateado} de ${d.ano || "2026"}`;
 
     const fontLabelSize = 8.5;
     const wLabel = font.widthOfTextAtSize(labelFecha, fontLabelSize);
@@ -594,7 +646,7 @@ export const imprimirCentralizador2doAno = async (estudianteId, blockchainData =
     const pdf417Height = 45;
 
     const txHashValido = txHash || hashLocal || estudianteId;
-    const pdf417TextData = `ESTUDIANTE:${d.apellidos_nombres || ''}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
+    const pdf417TextData = `ESTUDIANTE:${nombreEstudiante}|TX_HASH:${txHashValido}|HASH_LOCAL:${hashLocal || "NO_DISPONIBLE"}`;
 
     const pdf417DataUrl = await generarPdf417DataUrl(pdf417TextData);
 
